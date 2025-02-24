@@ -1,9 +1,10 @@
 {
+    "url": "https://cad.onshape.com/documents/f25a377ac3c170577dec3a33/w/12884e12d39e1ef936e585e1/e/003fcbc1abf54b0a2960849a",
     "onshape_api": "https://cad.onshape.com",
     "onshape_access_key": "eYcDk12Ilv4o4rOeJQgDmTZ0",
     "onshape_secret_key": "cKJPu0pX13V6DL5KL7ZlXaVrSkshKyhAQMABhtpeZ9H4XZWQ",
     "documentId": "f25a377ac3c170577dec3a33",
     "workspaceId": "12884e12d39e1ef936e585e1",
     "outputFormat": "urdf",
-    "assemblyName": "Assembly 1"
+    "assemblyName": "RobotAssembly"
 }

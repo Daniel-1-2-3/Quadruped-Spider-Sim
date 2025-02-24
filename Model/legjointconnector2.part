@@ -1,12 +1,12 @@
 {
     "configuration": "default",
     "documentId": "f25a377ac3c170577dec3a33",
-    "documentMicroversion": "c9b2343ead512501696b9276",
+    "documentMicroversion": "4b868cf49142d23934a1b0f8",
     "elementId": "d81d755a22cbb30372dbf8e9",
     "fullConfiguration": "default",
-    "id": "MkVQE1IlVTLIu8+6E",
+    "id": "MYuCYEcRjaKCvsaau",
     "isStandardContent": false,
-    "name": "LegJointConnector2 <2>",
+    "name": "LegJointConnector2 <3>",
     "partId": "RFBD",
     "suppressed": false,
     "type": "Part"
