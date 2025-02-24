@@ -11,22 +11,42 @@ pos, rpy = sim.getRobotPose()
 _, orn = p.getBasePositionAndOrientation(sim.robot)
 sim.setRobotPose([pos[0], pos[1], pos[2]], orn)
 
+defined_joints = [
+    "FR_J1", "BL_J1", "FL_J1", "BR_J1",
+    "FR_J2", "BL_J2", "FL_J2", "BR_J2", 
+    "FR_J3", "BL_J3", "FL_J3", "BR_J3",
+    "FR_J4", "BL_J4", "FL_J4", "BR_J4"
+]
+
 controls = {}
-for name in sim.getJoints():
+targets = {}
+for joint_name in defined_joints:
+    controls[joint_name] = None  
+
+for name in controls.keys():
     if name.endswith('_speed'):
-        controls[name] = p.addUserDebugParameter(
-            name, -math.pi*3, math.pi*3, 0)
+        controls[name] = p.addUserDebugParameter(name, -math.pi*3, math.pi*3, 0)
     else:
         infos = sim.getJointsInfos(name)
-        low = -math.pi
-        high = math.pi
+        low, high = -math.pi, math.pi
         if 'lowerLimit' in infos:
             low = infos['lowerLimit']
         if 'upperLimit' in infos:
             high = infos['upperLimit']
         controls[name] = p.addUserDebugParameter(name, low, high, 0)
-
+        # Manually set the initial angle
+        if name in "BL_J1 FR_J1 BR_J2 FL_J2 BL_J4 FR_J4":
+            targets[name] = high
+            controls[name] = p.addUserDebugParameter(name, low, high, high)
+        elif name in "BR_J1 FL_J1 BL_J2 FR_J2 BR_J4 FL_J4":
+            targets[name] = low
+            controls[name] = p.addUserDebugParameter(name, low, high, low)
+        
+p.configureDebugVisualizer(p.COV_ENABLE_GUI, 1)
+print(targets)
 lastPrint = 0
+sim.setJoints(targets)
+
 while True:
     targets = {}
     for name in controls.keys():
@@ -35,14 +55,7 @@ while True:
 
     if time.time() - lastPrint > 0.05:
         lastPrint = time.time()
-        os.system("clear")
         frames = sim.getFrames()
-        for frame in frames:
-            print(frame)
-            print("- x=%f\ty=%f\tz=%f" % frames[frame][0])
-            print("- r=%f\tp=%f\ty=%f" % frames[frame][1])
-            print("")
-        print("Center of mass:")
-        print(sim.getCenterOfMassPosition())
+        #print(sim.getCenterOfMassPosition())
 
     sim.tick()
