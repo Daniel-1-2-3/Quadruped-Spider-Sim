@@ -33,14 +33,15 @@ for name in controls.keys():
             low = infos['lowerLimit']
         if 'upperLimit' in infos:
             high = infos['upperLimit']
-        controls[name] = p.addUserDebugParameter(name, low, high, 0)
+        initial_val = 0.0
         # Manually set the initial angle
         if name in "BL_J1 FR_J1 BR_J2 FL_J2 BL_J4 FR_J4":
             targets[name] = high
-            controls[name] = p.addUserDebugParameter(name, low, high, high)
+            initial_val = high
         elif name in "BR_J1 FL_J1 BL_J2 FR_J2 BR_J4 FL_J4":
             targets[name] = low
-            controls[name] = p.addUserDebugParameter(name, low, high, low)
+            initial_val = low
+        controls[name] = p.addUserDebugParameter(name, low, high, initial_val)
         
 p.configureDebugVisualizer(p.COV_ENABLE_GUI, 1)
 print(targets)
@@ -56,6 +57,6 @@ while True:
     if time.time() - lastPrint > 0.05:
         lastPrint = time.time()
         frames = sim.getFrames()
-        #print(sim.getCenterOfMassPosition())
+        # print(sim.getCenterOfMassPosition())
 
     sim.tick()

@@ -344,17 +344,13 @@ class Simulation:
 
         for name in joints.keys():
             if name in self.joints:
-                if name.endswith('_speed'):
+                if name in self.maxTorques:
+                    maxTorque = self.maxTorques[name]
                     p.setJointMotorControl2(
-                        self.robot, self.joints[name], p.VELOCITY_CONTROL, targetVelocity=joints[name])
+                        self.robot, self.joints[name], p.POSITION_CONTROL, joints[name], force=maxTorque)
                 else:
-                    if name in self.maxTorques:
-                        maxTorque = self.maxTorques[name]
-                        p.setJointMotorControl2(
-                            self.robot, self.joints[name], p.POSITION_CONTROL, joints[name], force=maxTorque)
-                    else:
-                        p.setJointMotorControl2(
-                            self.robot, self.joints[name], p.POSITION_CONTROL, joints[name])
+                    p.setJointMotorControl2(
+                        self.robot, self.joints[name], p.POSITION_CONTROL, joints[name])
 
                 applied[name] = p.getJointState(self.robot, self.joints[name])
             else:
