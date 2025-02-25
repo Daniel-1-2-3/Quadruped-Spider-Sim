@@ -1,3 +1,4 @@
+from cv2 import convexHull
 from transforms3d.quaternions import mat2quat, quat2mat
 import math
 import sys
@@ -6,7 +7,7 @@ import numpy as np
 import pybullet as p
 from time import sleep
 import os
-
+from scipy.spatial import ConvexHull
 
 class Simulation:
     """
@@ -421,6 +422,54 @@ class Simulation:
             k += 1
 
         return com / mass
+
+    def getBalanceScore(self):
+        """Returns a balance score from 0 to 10 based on CoM position relative to terrain contact points.
+        Also visualizes contact points and CoM in PyBullet.
+        """
+
+        # Compute Center of Mass (CoM)
+        com_pos = np.array([0., 0., 0.])
+        total_mass = 0
+
+        for i in range(-1, p.getNumJoints(self.robot)):
+            if i == -1:
+                pos, _ = p.getBasePositionAndOrientation(self.robot)
+            else:
+                pos = p.getLinkState(self.robot, i)[0]
+
+            mass = p.getDynamicsInfo(self.robot, i)[0]
+            com_pos += np.array(pos) * mass
+            total_mass += mass
+
+        com_pos = com_pos / total_mass if total_mass > 0 else np.array([0., 0., 0.])
+        com_x, com_y, com_z = com_pos  # Extract x, y, z
+
+        # Get ground contact points specifically with terrain
+        contacts = p.getContactPoints(self.robot, self.floor)
+        if len(contacts) < 3:
+            return 0  # No ground contact with terrain → Not balanced
+
+        # Extract min and max X, Y from contact points
+        contact_positions = [contact[5] for contact in contacts]  # (x, y, z) positions
+        contact_x = [pos[0] for pos in contact_positions]
+        contact_y = [pos[1] for pos in contact_positions]
+
+        min_x, max_x = min(contact_x), max(contact_x)
+        min_y, max_y = min(contact_y), max(contact_y)
+
+        # Check if CoM is inside the bounding box of contact points
+        if min_x <= com_x <= max_x and min_y <= com_y <= max_y:
+            # Normalize score from 1 to 10 based on distance from center
+            center_x, center_y = (min_x + max_x) / 2, (min_y + max_y) / 2
+            max_dist = max(max_x - min_x, max_y - min_y) / 2  # Half of the bounding box
+            current_dist = np.linalg.norm([com_x - center_x, com_y - center_y])
+
+            balance_score = max(1, 10 * (1 - current_dist / max_dist))
+        else:
+            balance_score = -5  # CoM is outside contact area
+
+        return round(balance_score, 2)  # Return a rounded score
 
     def addDebugPosition(self, position, color=None, duration=30):
         """Adds a debug position to be drawn as a line
