@@ -4,7 +4,8 @@
                 point A to B, symmetrical movement to the best of its ability. 
 """
 
-import os, math, random, time, sys, gymnasium
+import os, math, random, time, sys
+import gymnasium as gym
 import numpy as np
 import pybullet as p
 from gymnasium import register, spaces
@@ -13,21 +14,27 @@ from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import VecNormalize
+from stable_baselines3.common.env_checker import check_env
 
-class RobotEnv(gymnasium.Env):
+class RobotEnv(gym.Env):
     def __init__(self):
-        p.connect(p.GUI)
-        self.target_pos = (random.uniform(1, 10), random.randint(1, 10))
+        self.step_count = 0
+        self.episodes = 0
+        p.connect(p.DIRECT)
         self.reset()
         self.action_space = spaces.Box(low=-1, high=1, shape=(16,), dtype=np.float32)
         self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(28,), dtype=np.float32)
         
     def reset(self, seed=None, options=None):
+        print("EPISODES:", self.episodes)
         p.resetSimulation()
         p.setGravity(0, 0, -9.81)
         p.configureDebugVisualizer(p.COV_ENABLE_MOUSE_PICKING, 0)
         p.resetDebugVisualizerCamera(cameraDistance=8, cameraYaw=0, cameraPitch=-40, cameraTargetPosition=[0, 0, 0])
     
+        self.target_pos = (random.uniform(1, 10), random.randint(1, 10))
+        self.step_count = 0
+        
         # Loading robot
         startPos = [0, 0, 3]
         startOrientation = p.getQuaternionFromEuler([0, 0, 0])
@@ -55,8 +62,10 @@ class RobotEnv(gymnasium.Env):
                 current_pos = lower_lim
             self.joints[name] = (joint_id, lower_lim, upper_lim, current_pos) # (Id, lower limit, upper limit, current pos)
             
+        for i in range(30): # Wait for robot to touch the ground
+            p.stepSimulation()
+            
         # Training vars
-        self.step_count = 0
         obs = self.getObservation()
         return obs, {}
         
@@ -72,7 +81,13 @@ class RobotEnv(gymnasium.Env):
         robot_x, robot_y = pos[0], pos[1]
         if (self.target_pos[0] - 2 <= robot_x <= self.target_pos[0] + 2) and (self.target_pos[1] - 2 <= robot_y <= self.target_pos[1] + 2):
             terminated = True
+            self.episodes += 1
+            print("Target reached")
         
+        if (self.step_count >= 500) or self.isFlipped():
+            terminated = True
+            self.episodes += 1
+            
         # Reward
         directionScore, isMovingTowards = self.evaluateDirectionScore() 
         reward += self.evaluateBalanceScore()  + self.evaluateEffeciencyScore(target_rots) + + self.evaluateSpeedScore(isMovingTowards) + directionScore
@@ -194,63 +209,61 @@ class RobotEnv(gymnasium.Env):
 
     def evaluateDirectionScore(self):
         pos, _ = p.getBasePositionAndOrientation(self.robot)
-        robot_x, robot_y = pos[0], pos[1]
-
         velocity, _ = p.getBaseVelocity(self.robot)
-        vel_x, vel_y = velocity[0], velocity[1]
 
         target_x, target_y = self.target_pos
+        robot_x, robot_y = pos[0], pos[1]
+        vel_x, vel_y = velocity[0], velocity[1]
 
         target_vector = np.array([target_x - robot_x, target_y - robot_y])
-        target_vector /= np.linalg.norm(target_vector) 
         movement_vector = np.array([vel_x, vel_y])
-        movement_norm = np.linalg.norm(movement_vector)
-        if movement_norm == 0:
-            return -10  # No movement, assume bad direction
-        movement_vector /= movement_norm  # Normalize
 
-        # Compute the angle between the two vectors
+        if np.linalg.norm(movement_vector) == 0:
+            return -10  # No movement at all
+
+        target_vector /= np.linalg.norm(target_vector)
+        movement_vector /= np.linalg.norm(movement_vector)
+
         dot_product = np.dot(target_vector, movement_vector)
-        angle_rad = np.arccos(np.clip(dot_product, -1.0, 1.0))  # Clip to prevent errors
-        angle_deg = np.degrees(angle_rad)  # Convert to degrees
+        angle_rad = np.arccos(np.clip(dot_product, -1.0, 1.0))
+        angle_deg = np.degrees(angle_rad)
 
-        reward = 0
-        isMovingTowards = False
-        if angle_deg > 90:  # Moving away
-            reward = -10
-        elif angle_deg < 30:  # Moving directly toward target
-            isMovingTowards = True
-            reward = round(10 - (angle_deg / 3))  # Linearly decrease from 10 to 1
-        else:  # Between 30 and 90 degrees
-            reward = round(max(1, 5 - (angle_deg - 30) / 15))  # Gradual penalty
-        return (reward, isMovingTowards)
+        if angle_deg > 90:
+            return False, -10  # Moving away
+        elif angle_deg < 30:
+            return True, 10 - (angle_deg / 3)  # Smooth scaling from 10 to 1
+        else:
+            return False, max(1, 5 - (angle_deg - 30) / 15)  # Gradual decrease
 
     def evaluateSpeedScore(self, isMovingTowards):
-        # Get base linear velocity (x, y)
         velocity, _ = p.getBaseVelocity(self.robot)
-        speed = np.linalg.norm([velocity[0], velocity[1]])  # Compute speed magnitude
+        speed = np.linalg.norm([velocity[0], velocity[1]])
 
         if not isMovingTowards:
-            return 0  
+            return -5  # Penalize moving in the wrong direction
 
-        score = speed * 10
-        return round(score, 2)
+        return min(10, 10 * (1 - np.exp(-speed / 2))) 
+
+    def isFlipped(self):
+        _, orn = p.getBasePositionAndOrientation(self.robot)
+        roll, pitch, _ = p.getEulerFromQuaternion(orn)  # Convert to Euler angles
+
+        roll_deg = np.degrees(roll)
+        pitch_deg = np.degrees(pitch)
+
+        # If the roll or pitch is beyond 85 degrees, assume it's flipped
+        flipped = abs(roll_deg) > 85 or abs(pitch_deg) > 85
+        if flipped:
+            print("Flipped")
+        return flipped
 
     def close(self):
         p.disconnect()
         sys.exit()
 
 if __name__ == "__main__":
-    register(
-        id="SpiderBotSim-v1",
-        entry_point="V1_Env:RobotEnv"
-    )
-    env = make_vec_env("SpiderBotSim-v1")
-    obs = env.reset()
-    
-    policy_kwargs = dict(net_arch=[1024, 512, 512, 256, 128])
-    model = PPO("MlpPolicy", env, gamma=0.999, ent_coef=0.012, learning_rate=0.0007, n_steps=1024, normalize_advantage=True, verbose=1) 
-
-    model.learn(total_timesteps=850_000, progress_bar=True)
-    model.save("model")
-    del model
+    env = RobotEnv()
+    model = PPO("MlpPolicy", env, verbose=1)
+    model.learn(total_timesteps=500000)
+    model.save('PPOSpiderRobot')
+    evaluate_policy(model, env, n_eval_episodes=10)
