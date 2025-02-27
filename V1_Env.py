@@ -27,6 +27,9 @@ class RobotEnv(gym.Env):
         
     def reset(self, seed=None, options=None):
         print("EPISODES:", self.episodes)
+        if self.episodes == 1000:
+            p.disconnect()
+            p.connect(p.GUI)
         p.resetSimulation()
         p.setGravity(0, 0, -9.81)
         p.configureDebugVisualizer(p.COV_ENABLE_MOUSE_PICKING, 0)
@@ -82,15 +85,19 @@ class RobotEnv(gym.Env):
         if (self.target_pos[0] - 2 <= robot_x <= self.target_pos[0] + 2) and (self.target_pos[1] - 2 <= robot_y <= self.target_pos[1] + 2):
             terminated = True
             self.episodes += 1
-            print("Target reached")
+            print("TERMINATED: Target reached")
         
-        if (self.step_count >= 500) or self.isFlipped():
+        if (self.step_count >= 500):
             terminated = True
             self.episodes += 1
+            print("TERMINATED: Timeout")
             
-        # Reward
-        directionScore, isMovingTowards = self.evaluateDirectionScore() 
-        reward += self.evaluateBalanceScore()  + self.evaluateEffeciencyScore(target_rots) + + self.evaluateSpeedScore(isMovingTowards) + directionScore
+        if self.isFlipped():
+            terminated = True
+            self.episodes += 1
+            print("TERMINATED: Flipped")
+            
+        reward = self.evaluateReward()
         obs = self.getObservation()
         return obs, reward, terminated, False, {}
     
@@ -200,61 +207,60 @@ class RobotEnv(gym.Env):
             balance_score = max(1, 10 * (1 - current_dist / max_dist))
 
         return round(balance_score, 2)
-
-    def evaluateEffeciencyScore(self, targets):
-        score = 0
-        for name, (_, _, _, current_pos) in self.joints.items():
-            score -= abs(targets[name] - current_pos)
-        return score
-
-    def evaluateDirectionScore(self):
-        pos, _ = p.getBasePositionAndOrientation(self.robot)
+    
+    def evaluateReward(self):
+        reward = 0
+      
+        base_pos, _ = p.getBasePositionAndOrientation(self.robot)
         velocity, _ = p.getBaseVelocity(self.robot)
-
-        target_x, target_y = self.target_pos
-        robot_x, robot_y = pos[0], pos[1]
+        robot_x, robot_y = base_pos[0], base_pos[1]
         vel_x, vel_y = velocity[0], velocity[1]
-
+        target_x, target_y = self.target_pos
+        
+        # Directional reward, encourage movement towards target
         target_vector = np.array([target_x - robot_x, target_y - robot_y])
         movement_vector = np.array([vel_x, vel_y])
 
-        if np.linalg.norm(movement_vector) == 0:
-            return -10  # No movement at all
+        if np.linalg.norm(movement_vector) > 0: 
+            target_vector /= np.linalg.norm(target_vector)
+            movement_vector /= np.linalg.norm(movement_vector)
 
-        target_vector /= np.linalg.norm(target_vector)
-        movement_vector /= np.linalg.norm(movement_vector)
-
-        dot_product = np.dot(target_vector, movement_vector)
-        angle_rad = np.arccos(np.clip(dot_product, -1.0, 1.0))
-        angle_deg = np.degrees(angle_rad)
-
-        if angle_deg > 90:
-            return False, -10  # Moving away
-        elif angle_deg < 30:
-            return True, 10 - (angle_deg / 3)  # Smooth scaling from 10 to 1
-        else:
-            return False, max(1, 5 - (angle_deg - 30) / 15)  # Gradual decrease
-
-    def evaluateSpeedScore(self, isMovingTowards):
-        velocity, _ = p.getBaseVelocity(self.robot)
-        speed = np.linalg.norm([velocity[0], velocity[1]])
-
-        if not isMovingTowards:
-            return -5  # Penalize moving in the wrong direction
-
-        return min(10, 10 * (1 - np.exp(-speed / 2))) 
+            dot_product = np.dot(target_vector, movement_vector)
+            directional_reward = 0.5 * dot_product 
+            reward += directional_reward
+        
+            # Distance reward, proportional reward for closing distance
+            prev_distance = np.linalg.norm([target_x - (robot_x - vel_x), target_y - (robot_y - vel_y)]) 
+            new_distance = np.linalg.norm([target_x - robot_x, target_y - robot_y]) 
+            if new_distance < prev_distance:
+                distance_reward = 0.5 * (prev_distance - new_distance)  # Positive if getting closer
+                reward += distance_reward
+            
+            # Sideways penalty
+            sideways_penalty = 0.3 * abs(np.cross(target_vector, movement_vector))
+            reward -= sideways_penalty
+        
+        # Time step penalty, encourage effeciency 
+        reward -= 0.05 * self.step_count
+        
+        # Penalty for flipping over
+        reward -= 10 if self.isFlipped() else 0
+        
+        # Large reward for reaching target
+        if (target_x - 2 <= robot_x <= target_x + 2) and (target_y - 2 <= robot_y <= target_y + 2):
+            reward += 30
+        
+        return reward
 
     def isFlipped(self):
         _, orn = p.getBasePositionAndOrientation(self.robot)
-        roll, pitch, _ = p.getEulerFromQuaternion(orn)  # Convert to Euler angles
+        roll, pitch, _ = p.getEulerFromQuaternion(orn)
 
         roll_deg = np.degrees(roll)
         pitch_deg = np.degrees(pitch)
 
         # If the roll or pitch is beyond 85 degrees, assume it's flipped
         flipped = abs(roll_deg) > 85 or abs(pitch_deg) > 85
-        if flipped:
-            print("Flipped")
         return flipped
 
     def close(self):
@@ -264,6 +270,6 @@ class RobotEnv(gym.Env):
 if __name__ == "__main__":
     env = RobotEnv()
     model = PPO("MlpPolicy", env, verbose=1)
-    model.learn(total_timesteps=500000)
+    model.learn(total_timesteps=5000000)
     model.save('PPOSpiderRobot')
     evaluate_policy(model, env, n_eval_episodes=10)
