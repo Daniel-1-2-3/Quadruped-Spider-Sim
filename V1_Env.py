@@ -1,41 +1,37 @@
-""" 
+"""
     V1 training
     Objective:  Training basic walking gait along relatively flat ground. Most effecient movement from
                 point A to B, symmetrical movement to the best of its ability. 
 """
 
-import os, math, random, time, sys
+import os, math, random, time, sys, json
 import gymnasium as gym
 import numpy as np
 import pybullet as p
 from gymnasium import register, spaces
 from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.evaluation import evaluate_policy
-from stable_baselines3.common.env_util import make_vec_env
-from stable_baselines3.common.vec_env import VecNormalize
-from stable_baselines3.common.env_checker import check_env
-
+from stable_baselines3.common.callbacks import CheckpointCallback
 class RobotEnv(gym.Env):
     def __init__(self):
         self.step_count = 0
         self.episodes = 0
+        self.episode_total_reward = 0
         p.connect(p.DIRECT)
         self.reset()
-        self.action_space = spaces.Box(low=-1, high=1, shape=(16,), dtype=np.float32)
-        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(28,), dtype=np.float32)
+        self.action_space = spaces.Box(low=-1, high=1, shape=(8,), dtype=np.float32)
+        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(15,), dtype=np.float32)
         
     def reset(self, seed=None, options=None):
-        print("EPISODES:", self.episodes)
-        if self.episodes == 1000:
-            p.disconnect()
-            p.connect(p.GUI)
+        # print("EPISODES:", self.episodes)
+        self.episode_total_reward = 0
+
         p.resetSimulation()
         p.setGravity(0, 0, -9.81)
         p.configureDebugVisualizer(p.COV_ENABLE_MOUSE_PICKING, 0)
         p.resetDebugVisualizerCamera(cameraDistance=8, cameraYaw=0, cameraPitch=-40, cameraTargetPosition=[0, 0, 0])
     
-        self.target_pos = (random.uniform(1, 10), random.randint(1, 10))
+        self.target_pos = (random.uniform(10, 30), random.randint(10, 30))
         self.step_count = 0
         
         # Loading robot
@@ -87,7 +83,7 @@ class RobotEnv(gym.Env):
             self.episodes += 1
             print("TERMINATED: Target reached")
         
-        if (self.step_count >= 500):
+        if (self.step_count >= 1000):
             terminated = True
             self.episodes += 1
             print("TERMINATED: Timeout")
@@ -95,9 +91,10 @@ class RobotEnv(gym.Env):
         if self.isFlipped():
             terminated = True
             self.episodes += 1
-            print("TERMINATED: Flipped")
+            # print("TERMINATED: Flipped")
             
         reward = self.evaluateReward()
+        self.episode_total_reward += reward
         obs = self.getObservation()
         return obs, reward, terminated, False, {}
     
@@ -105,17 +102,15 @@ class RobotEnv(gym.Env):
         obs = []
         # Joint angles
         for joint_id in range(p.getNumJoints(self.robot)):
-            obs.append(p.getJointState(self.robot, joint_id)[0])
+            if p.getJointInfo(self.robot, joint_id)[1].decode("utf-8") in {"FL_J1", "FR_J1", "BL_J1", "BR_J1", "FL_J3", "FR_J3", "BL_J3", "BR_J3"}:
+                obs.append(p.getJointState(self.robot, joint_id)[0])
         
         # Target position, base position and orientation (roll/pitch/yaw)
         base_pos, orn = p.getBasePositionAndOrientation(self.robot)
-        obs.extend(base_pos)
-        obs.extend(p.getEulerFromQuaternion(orn))
+        obs.extend(base_pos[:2])
+        roll, pitch, _ = p.getEulerFromQuaternion(orn)
+        obs.extend([roll, pitch])
         obs.extend(self.target_pos)
-        
-        # Body angular velocity
-        _, angular_vel = p.getBaseVelocity(self.robot)
-        obs.extend(angular_vel)
         
         # Num of contacts with ground
         contacts = p.getContactPoints(self.robot, self.terrain)
@@ -143,14 +138,18 @@ class RobotEnv(gym.Env):
 
     def setJoints(self, actions, tolerance=0.01):
         moving_joints = {}  # Track joints still in motion
-        target_rots  ={}
+        target_rots = {}
         
         i = 0
         for name, (joint_id, lower_lim, upper_lim, current_pos) in self.joints.items():
-            target_rots[name] = lower_lim + actions[i] * (upper_lim - lower_lim)
+            if name in {"FL_J1", "FR_J1", "BL_J1", "BR_J1", "FL_J3", "FR_J3", "BL_J3", "BR_J3"}:
+                target_rots[name] = lower_lim + actions[i] * (upper_lim - lower_lim)
+                i += 1
+            else:
+                target_rots[name] = current_pos
+
             p.setJointMotorControl2(self.robot, joint_id, p.POSITION_CONTROL, target_rots[name])
             moving_joints[joint_id] = target_rots[name]
-            i += 1
 
         # Run simulation steps until all joints reach targets
         for i in range(50):
@@ -199,12 +198,12 @@ class RobotEnv(gym.Env):
         min_y, max_y = min(contact_y), max(contact_y)
 
         # Check if CoM is inside the bounding box of contact points
-        balance_score = -5 # Penalize if outside area
+        balance_score = -1 # Penalize if outside area
         if min_x <= com_x <= max_x and min_y <= com_y <= max_y:
             center_x, center_y = (min_x + max_x) / 2, (min_y + max_y) / 2
             max_dist = max(max_x - min_x, max_y - min_y) / 2
             current_dist = np.linalg.norm([com_x - center_x, com_y - center_y])
-            balance_score = max(1, 10 * (1 - current_dist / max_dist))
+            balance_score = 1 - current_dist / max_dist
 
         return round(balance_score, 2)
     
@@ -225,30 +224,30 @@ class RobotEnv(gym.Env):
             target_vector /= np.linalg.norm(target_vector)
             movement_vector /= np.linalg.norm(movement_vector)
 
-            dot_product = np.dot(target_vector, movement_vector)
-            directional_reward = 0.5 * dot_product 
+            dot_product = 5 * np.dot(target_vector, movement_vector)
+            directional_reward = dot_product 
             reward += directional_reward
         
             # Distance reward, proportional reward for closing distance
             prev_distance = np.linalg.norm([target_x - (robot_x - vel_x), target_y - (robot_y - vel_y)]) 
             new_distance = np.linalg.norm([target_x - robot_x, target_y - robot_y]) 
             if new_distance < prev_distance:
-                distance_reward = 0.5 * (prev_distance - new_distance)  # Positive if getting closer
-                reward += distance_reward
+                distance_reward = (prev_distance - new_distance)  # Positive if getting closer
+                reward += 5 * distance_reward
             
             # Sideways penalty
-            sideways_penalty = 0.3 * abs(np.cross(target_vector, movement_vector))
+            sideways_penalty = 3 * abs(np.cross(target_vector, movement_vector))
             reward -= sideways_penalty
         
         # Time step penalty, encourage effeciency 
-        reward -= 0.05 * self.step_count
+        reward -= 0.001 * self.step_count
         
         # Penalty for flipping over
-        reward -= 10 if self.isFlipped() else 0
+        reward -= 150 if self.isFlipped() else 0
         
         # Large reward for reaching target
         if (target_x - 2 <= robot_x <= target_x + 2) and (target_y - 2 <= robot_y <= target_y + 2):
-            reward += 30
+            reward += 500
         
         return reward
 
@@ -269,7 +268,15 @@ class RobotEnv(gym.Env):
 
 if __name__ == "__main__":
     env = RobotEnv()
-    model = PPO("MlpPolicy", env, verbose=1)
-    model.learn(total_timesteps=5000000)
+    model = PPO("MlpPolicy", env, verbose=1, tensorboard_log=f'{os.getcwd()}', device='auto')
+
+    # Save checkpoint
+    checkpoint_callback = CheckpointCallback(
+        save_freq=50_000,  # Save every 50,000 timesteps
+        save_path= os.getcwd(),
+        name_prefix="PPOSpiderRobot"
+    )
+
+    model.learn(total_timesteps=750_000, callback=checkpoint_callback)
     model.save('PPOSpiderRobot')
     evaluate_policy(model, env, n_eval_episodes=10)
