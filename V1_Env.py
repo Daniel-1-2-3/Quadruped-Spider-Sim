@@ -4,7 +4,7 @@
                 point A to B, symmetrical movement to the best of its ability. 
 """
 
-import os, math, random, time, sys, json
+import os, math, random, time, sys, json, copy
 import gymnasium as gym
 import numpy as np
 import pybullet as p
@@ -13,11 +13,11 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.callbacks import CheckpointCallback
 class RobotEnv(gym.Env):
-    def __init__(self):
+    def __init__(self, connect_type="GUI"):
         self.step_count = 0
         self.episodes = 0
         self.episode_total_reward = 0
-        p.connect(p.DIRECT)
+        p.connect(p.DIRECT if connect_type == "DIRECT" else p.GUI)
         self.reset()
         self.action_space = spaces.Box(low=-1, high=1, shape=(8,), dtype=np.float32)
         self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(15,), dtype=np.float32)
@@ -25,13 +25,22 @@ class RobotEnv(gym.Env):
     def reset(self, seed=None, options=None):
         # print("EPISODES:", self.episodes)
         self.episode_total_reward = 0
+        self.prev_pos = []
 
         p.resetSimulation()
         p.setGravity(0, 0, -9.81)
         p.configureDebugVisualizer(p.COV_ENABLE_MOUSE_PICKING, 0)
-        p.resetDebugVisualizerCamera(cameraDistance=8, cameraYaw=0, cameraPitch=-40, cameraTargetPosition=[0, 0, 0])
-    
-        self.target_pos = (random.uniform(10, 30), random.randint(10, 30))
+        p.resetDebugVisualizerCamera(cameraDistance=10, cameraYaw=0, cameraPitch=-40, cameraTargetPosition=[0, 0, 0])
+
+        self.target_pos = (random.choice([random.uniform(-7, -3), random.uniform(3, 7)]), 
+                           random.choice([random.uniform(-7, -3), random.uniform(3, 7)]))
+        
+        p.addUserDebugLine(
+            lineFromXYZ=[self.target_pos[0], self.target_pos[1], 0],  # Start at ground level
+            lineToXYZ=[self.target_pos[0], self.target_pos[1], 1],    # End slightly above
+            lineColorRGB=[1, 0, 0],  # Red color
+            lineWidth=2
+        )
         self.step_count = 0
         
         # Loading robot
@@ -48,7 +57,7 @@ class RobotEnv(gym.Env):
         self.terrain = self.createRandomHeightfield() # Load floor
         # Set friction, no bounce, no sinking (contactStiffness)
         p.changeDynamics(self.terrain, -1, contactStiffness=math.inf, contactDamping=math.inf, 
-                         lateralFriction=0.8, spinningFriction=0.6, rollingFriction=0.1, restitution=0) 
+                         lateralFriction=1.5, spinningFriction=1.2, rollingFriction=0.5 , restitution=0) 
         
         # Initialize joints
         self.joints = {}
@@ -63,6 +72,7 @@ class RobotEnv(gym.Env):
             
         for i in range(30): # Wait for robot to touch the ground
             p.stepSimulation()
+        self.prev_pos = p.getBasePositionAndOrientation(self.robot)[0][:2]
             
         # Training vars
         obs = self.getObservation()
@@ -76,9 +86,11 @@ class RobotEnv(gym.Env):
         target_rots = self.setJoints(action.tolist())
         p.stepSimulation()
         
-        pos, _ = p.getBasePositionAndOrientation(self.robot)
-        robot_x, robot_y = pos[0], pos[1]
-        if (self.target_pos[0] - 2 <= robot_x <= self.target_pos[0] + 2) and (self.target_pos[1] - 2 <= robot_y <= self.target_pos[1] + 2):
+        
+        current_pos, _ = p.getBasePositionAndOrientation(self.robot)
+        current_pos = current_pos[:2]
+        current_x, current_y = current_pos
+        if (self.target_pos[0] - 2 <= current_x <= self.target_pos[0] + 2) and (self.target_pos[1] - 2 <= current_y <= self.target_pos[1] + 2):
             terminated = True
             self.episodes += 1
             print("TERMINATED: Target reached")
@@ -92,7 +104,8 @@ class RobotEnv(gym.Env):
             terminated = True
             self.episodes += 1
             # print("TERMINATED: Flipped")
-            
+        self.prev_pos = copy.copy(current_pos)
+        
         reward = self.evaluateReward()
         self.episode_total_reward += reward
         obs = self.getObservation()
@@ -210,44 +223,36 @@ class RobotEnv(gym.Env):
     def evaluateReward(self):
         reward = 0
       
-        base_pos, _ = p.getBasePositionAndOrientation(self.robot)
-        velocity, _ = p.getBaseVelocity(self.robot)
-        robot_x, robot_y = base_pos[0], base_pos[1]
-        vel_x, vel_y = velocity[0], velocity[1]
+        current_pos, orn = p.getBasePositionAndOrientation(self.robot)
+        robot_x, robot_y = current_pos[:2]
         target_x, target_y = self.target_pos
+        _, _, robot_yaw = p.getEulerFromQuaternion(orn)  # Extract yaw (in radians)
         
-        # Directional reward, encourage movement towards target
-        target_vector = np.array([target_x - robot_x, target_y - robot_y])
-        movement_vector = np.array([vel_x, vel_y])
-
-        if np.linalg.norm(movement_vector) > 0: 
-            target_vector /= np.linalg.norm(target_vector)
-            movement_vector /= np.linalg.norm(movement_vector)
-
-            dot_product = 5 * np.dot(target_vector, movement_vector)
-            directional_reward = dot_product 
-            reward += directional_reward
+        # Directional
+        desired_angle = np.arctan2(target_y - robot_y, target_x - robot_x)
+        angle_deviation = desired_angle - robot_yaw
+        angle_deviation = (angle_deviation + np.pi) % (2 * np.pi) - np.pi
+        angle_deviation_degrees = np.degrees(angle_deviation) # angle deviation -25 to 25 is acceptable, where 0 = facing direct
         
-            # Distance reward, proportional reward for closing distance
-            prev_distance = np.linalg.norm([target_x - (robot_x - vel_x), target_y - (robot_y - vel_y)]) 
-            new_distance = np.linalg.norm([target_x - robot_x, target_y - robot_y]) 
-            if new_distance < prev_distance:
-                distance_reward = (prev_distance - new_distance)  # Positive if getting closer
-                reward += 5 * distance_reward
-            
-            # Sideways penalty
-            sideways_penalty = 3 * abs(np.cross(target_vector, movement_vector))
-            reward -= sideways_penalty
+        if abs(angle_deviation_degrees) <= 25:
+            reward += 25 * np.exp(-0.1 * abs(angle_deviation_degrees))  # Decay instead of linear drop
+
+        # Closing in
+        current_distance = self.distance(self.target_pos, current_pos[:2])
+        prev_distance = self.distance(self.target_pos, self.prev_pos)
+        if current_distance < prev_distance:
+            distance_reward = abs(prev_distance - current_distance)
+            reward += 5 + 15 * distance_reward
         
         # Time step penalty, encourage effeciency 
-        reward -= 0.001 * self.step_count
+        reward -= 0.01 * np.log(1 + self.step_count)
         
         # Penalty for flipping over
         reward -= 150 if self.isFlipped() else 0
         
         # Large reward for reaching target
-        if (target_x - 2 <= robot_x <= target_x + 2) and (target_y - 2 <= robot_y <= target_y + 2):
-            reward += 500
+        if (target_x - 0.25 <= robot_x <= target_x + 0.25) and (target_y - 0.25 <= robot_y <= target_y + 0.25):
+            reward += 1500
         
         return reward
 
@@ -262,21 +267,40 @@ class RobotEnv(gym.Env):
         flipped = abs(roll_deg) > 85 or abs(pitch_deg) > 85
         return flipped
 
+    def distance(self, coord1, coord2):
+        (x1, y1), (x2, y2) = coord1, coord2
+        return math.sqrt((x1 - x2)**2 + (y1 - y2)**2)
+    
     def close(self):
         p.disconnect()
         sys.exit()
 
 if __name__ == "__main__":
-    env = RobotEnv()
-    model = PPO("MlpPolicy", env, verbose=1, tensorboard_log=f'{os.getcwd()}', device='auto')
+    env = RobotEnv("DIRECT")
+    
+    """
+    obs, _ = env.reset()
+    model = PPO.load(f'{os.getcwd()}/PPOSpiderRobot.zip')
 
-    # Save checkpoint
+    for _ in range(1000):  # Run for 1000 timesteps or until termination
+        action, _ = model.predict(obs, deterministic=True)  # Predict action
+        obs, reward, terminated, _, _ = env.step(action)  # Take action
+        
+        if terminated:
+            print("Episode finished!")
+            break
+
+    env.close()
+    """
     checkpoint_callback = CheckpointCallback(
-        save_freq=50_000,  # Save every 50,000 timesteps
-        save_path= os.getcwd(),
-        name_prefix="PPOSpiderRobot"
+        save_freq=100_000, 
+        save_path=os.getcwd(),
+        name_prefix="PPO_SpiderRobot"
     )
-
-    model.learn(total_timesteps=750_000, callback=checkpoint_callback)
+    
+    model = PPO("MlpPolicy", env, verbose=1, tensorboard_log=f'{os.getcwd()}', device='auto')
+    model.learn(total_timesteps=750_000, progress_bar=True, callback=checkpoint_callback)
     model.save('PPOSpiderRobot')
     evaluate_policy(model, env, n_eval_episodes=10)
+
+    # tensorboard --logdir=PPO_1      
