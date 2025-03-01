@@ -26,7 +26,7 @@ class RobotEnv(gym.Env):
         # print("EPISODES:", self.episodes)
         self.episode_total_reward = 0
         self.prev_pos = []
-
+        
         p.resetSimulation()
         p.setGravity(0, 0, -9.81)
         p.configureDebugVisualizer(p.COV_ENABLE_MOUSE_PICKING, 0)
@@ -90,7 +90,7 @@ class RobotEnv(gym.Env):
         current_pos, _ = p.getBasePositionAndOrientation(self.robot)
         current_pos = current_pos[:2]
         current_x, current_y = current_pos
-        if (self.target_pos[0] - 2 <= current_x <= self.target_pos[0] + 2) and (self.target_pos[1] - 2 <= current_y <= self.target_pos[1] + 2):
+        if (self.target_pos[0] - 0.25 <= current_x <= self.target_pos[0] + 0.25) and (self.target_pos[1] - 0.25 <= current_y <= self.target_pos[1] + 0.25):
             terminated = True
             self.episodes += 1
             print("TERMINATED: Target reached")
@@ -104,6 +104,7 @@ class RobotEnv(gym.Env):
             terminated = True
             self.episodes += 1
             # print("TERMINATED: Flipped")
+            
         self.prev_pos = copy.copy(current_pos)
         
         reward = self.evaluateReward()
@@ -233,27 +234,29 @@ class RobotEnv(gym.Env):
         angle_deviation = desired_angle - robot_yaw
         angle_deviation = (angle_deviation + np.pi) % (2 * np.pi) - np.pi
         angle_deviation_degrees = np.degrees(angle_deviation) # angle deviation -25 to 25 is acceptable, where 0 = facing direct
-        
-        if abs(angle_deviation_degrees) <= 25:
-            reward += 25 * np.exp(-0.1 * abs(angle_deviation_degrees))  # Decay instead of linear drop
 
-        # Closing in
+        # Closing in / moving away
         current_distance = self.distance(self.target_pos, current_pos[:2])
         prev_distance = self.distance(self.target_pos, self.prev_pos)
-        if current_distance < prev_distance:
-            distance_reward = abs(prev_distance - current_distance)
-            reward += 5 + 15 * distance_reward
+        if prev_distance > current_distance:
+            reward += 50 * (prev_distance - current_distance) ** 1.5
+            reward += 40 * (1 - abs(angle_deviation_degrees) / 25)  
         
         # Time step penalty, encourage effeciency 
-        reward -= 0.01 * np.log(1 + self.step_count)
+        if self.step_count > 200:
+            reward -= 0.01 * np.log(1 + (self.step_count - 200))
         
         # Penalty for flipping over
-        reward -= 150 if self.isFlipped() else 0
+        reward -= 100 + 0.1 * self.step_count if self.isFlipped() else 0
         
-        # Large reward for reaching target
-        if (target_x - 0.25 <= robot_x <= target_x + 0.25) and (target_y - 0.25 <= robot_y <= target_y + 0.25):
-            reward += 1500
-        
+        # Proximity rewards
+        if current_distance < 2:
+            reward += 100
+        if current_distance < 0.5:
+            reward += 300
+        if current_distance < 0.25:
+            reward += 1500  # Large final reward
+
         return reward
 
     def isFlipped(self):
@@ -280,15 +283,16 @@ if __name__ == "__main__":
     
     """
     obs, _ = env.reset()
-    model = PPO.load(f'{os.getcwd()}/PPOSpiderRobot.zip')
+    model = PPO.load(f'{os.getcwd()}/PPO_SpiderRobot_1000000_steps.zip')
 
-    for _ in range(1000):  # Run for 1000 timesteps or until termination
+    for _ in range(100000):  # Run for 1000 timesteps or until termination
         action, _ = model.predict(obs, deterministic=True)  # Predict action
         obs, reward, terminated, _, _ = env.step(action)  # Take action
+        time.sleep(0.001)
         
         if terminated:
             print("Episode finished!")
-            break
+            env.reset()
 
     env.close()
     """
@@ -299,8 +303,9 @@ if __name__ == "__main__":
     )
     
     model = PPO("MlpPolicy", env, verbose=1, tensorboard_log=f'{os.getcwd()}', device='auto')
-    model.learn(total_timesteps=750_000, progress_bar=True, callback=checkpoint_callback)
+    model.learn(total_timesteps=1_000_000, progress_bar=True, callback=checkpoint_callback)
     model.save('PPOSpiderRobot')
     evaluate_policy(model, env, n_eval_episodes=10)
 
-    # tensorboard --logdir=PPO_1      
+    # tensorboard --logdir=PPO_2
+    
