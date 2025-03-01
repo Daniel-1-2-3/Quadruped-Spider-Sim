@@ -104,10 +104,10 @@ class RobotEnv(gym.Env):
             terminated = True
             self.episodes += 1
             # print("TERMINATED: Flipped")
-            
-        self.prev_pos = copy.copy(current_pos)
         
         reward = self.evaluateReward()
+        
+        self.prev_pos = copy.copy(current_pos)
         self.episode_total_reward += reward
         obs = self.getObservation()
         return obs, reward, terminated, False, {}
