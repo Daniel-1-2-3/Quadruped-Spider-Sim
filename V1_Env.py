@@ -20,7 +20,7 @@ class RobotEnv(gym.Env):
         self.accumulated_episode_rewards = 0
         p.connect(p.DIRECT if connect_type == "DIRECT" else p.GUI)
         self.reset()
-        self.action_space = spaces.MultiDiscrete([3] * 8)
+        self.action_space = spaces.Box(low=-1, high=1, shape=(8,), dtype=np.float32)
         self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(18,), dtype=np.float32)
         
     def reset(self, seed=None, options=None):
@@ -73,9 +73,8 @@ class RobotEnv(gym.Env):
             elif name in "BR_J1 FL_J1 BL_J2 FR_J2 BR_J4 FL_J4":
                 current_pos = lower_lim
             self.joints[name] = (joint_id, lower_lim, upper_lim, current_pos) # (Id, lower limit, upper limit, current pos)
-        self.setJoints([0, 0, 0, 0, 0, 0, 0, 0])
-        
-        for i in range(500): # Wait for robot to touch the ground
+            
+        for i in range(30): # Wait for robot to touch the ground
             p.stepSimulation()
         self.prev_pos = p.getBasePositionAndOrientation(self.robot)[0][:2]
             
@@ -97,21 +96,26 @@ class RobotEnv(gym.Env):
         if (self.target_pos[0] - 0.25 <= current_x <= self.target_pos[0] + 0.25) and (self.target_pos[1] - 0.25 <= current_y <= self.target_pos[1] + 0.25):
             terminated = True
             self.episodes += 1
-            print("TERMINATED: Target reached  ", "  Times rewarded:", self.times_rewarded, "   Steps ran: ", self.step_count, "   Stationary steps: ", self.non_moves)
+            print("TERMINATED: Target reached  ", "  Times rewarded:", self.times_rewarded, "   Steps ran: ", self.step_count)
         
         if (self.step_count >= 1000):
             terminated = True
             self.episodes += 1
-            print("TERMINATED: Timeout  ", "  Times rewarded:", self.times_rewarded, "   Steps ran: ", self.step_count, "   Stationary steps: ", self.non_moves)
+            print("TERMINATED: Timeout  ", "  Times rewarded:", self.times_rewarded, "   Steps ran: ", self.step_count)
             
         if self.isFlipped():
             terminated = True
             self.episodes += 1
-            print("TERMINATED: Flipped  ", "  Times rewarded:", self.times_rewarded, "   Steps ran: ", self.step_count, "   Stationary steps: ", self.non_moves)
+            print("TERMINATED: Flipped  ", "  Times rewarded:", self.times_rewarded, "   Steps ran: ", self.step_count)
         
         reward = self.evaluateReward()
         self.accumulated_episode_rewards += reward
-
+        
+        if self.non_moves >= 10:
+            terminated = True
+            self.episodes += 1
+            print("TERMINATED: Stationary  ", "Times rewarded:", self.times_rewarded, "   Steps ran: ", self.step_count)
+        
         self.prev_pos = copy.copy(current_pos)
         obs = self.getObservation()
         return obs, reward, terminated, False, {}
@@ -159,14 +163,13 @@ class RobotEnv(gym.Env):
         return terrain_body
 
     def setJoints(self, actions, tolerance=0.01):
-        actions = [0.1*(x-1) for x in actions]
         moving_joints = {}  # Track joints still in motion
         target_rots = {}
         
         i = 0
         for name, (joint_id, lower_lim, upper_lim, current_pos) in self.joints.items():
             if name in {"FL_J1", "FR_J1", "BL_J1", "BR_J1", "FL_J3", "FR_J3", "BL_J3", "BR_J3"}:
-                target_rots[name] = current_pos + actions[i]
+                target_rots[name] = (upper_lim + lower_lim)/2 + actions[i] * ((upper_lim - lower_lim) / 2)
                 i += 1
             else:
                 target_rots[name] = current_pos
@@ -175,7 +178,7 @@ class RobotEnv(gym.Env):
             moving_joints[joint_id] = target_rots[name]
 
         # Run simulation steps until all joints reach targets
-        for i in range(5):
+        for i in range(50):
             joints_to_remove = []
             for joint_id, target in moving_joints.items():
                 current_position = p.getJointState(self.robot, joint_id)[0]
@@ -248,29 +251,27 @@ class RobotEnv(gym.Env):
         current_distance = self.distance(self.target_pos, current_pos[:2])
         prev_distance = self.distance(self.target_pos, self.prev_pos)
    
-        if prev_distance > current_distance + 0.005:
-            self.non_moves = 0
+        if prev_distance > current_distance + 0.1:
             self.times_rewarded += 1
-            reward += 2000 * (prev_distance - current_distance)
-            if prev_distance - current_distance > 0.01:
-                reward += 10
+            reward += 100 * (prev_distance - current_distance)
             
             # Reward for turning toward the target (smooth scaling up to 90°)
             direction_reward = max(0, 1 - abs(angle_deviation_degrees) / 90)
-            reward += 10 * direction_reward
+            reward += 15 * direction_reward
             
             # Contact points penalty
             reward -= 5 if len(p.getContactPoints(self.robot, self.terrain)) <= 1 else 0
             
         elif round(prev_distance, 3) == round(current_distance, 3):
-            reward -= 0.25 * self.non_moves
+            print('!!!')
+            reward -= 10
             self.non_moves += 1
         
         reward -= 0.1
         reward -= 500 if self.isFlipped() else 0 # Penalty for flipping over
 
         if current_distance < 0.2:
-            reward += 2000  # Large final reward
+            reward += 1500  # Large final reward
 
         return reward
 
@@ -321,7 +322,7 @@ if __name__ == "__main__":
         name_prefix="PPO"
     )
     
-    model = PPO("MlpPolicy", env, verbose=1, gamma=0.99, ent_coef=0.001, tensorboard_log=f'{os.getcwd()}', device='auto', )
+    model = PPO("MlpPolicy", env, verbose=1, gamma=0.99, ent_coef=0.02, tensorboard_log=f'{os.getcwd()}', device='auto', )
     model.learn(total_timesteps=1_000_000, progress_bar=True, callback=checkpoint_callback)
     model.save('PPOSpiderRobot')
     evaluate_policy(model, env, n_eval_episodes=10)
