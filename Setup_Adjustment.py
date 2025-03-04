@@ -53,6 +53,7 @@ while True:
     for name in controls.keys():
         targets[name] = p.readUserDebugParameter(controls[name])
     sim.setJoints(targets)
+    time.sleep(0.001)
 
     if time.time() - lastPrint > 0.05:
         lastPrint = time.time()
