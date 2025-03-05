@@ -16,7 +16,7 @@ class RobotEnv(gym.Env):
     def __init__(self, connect_type="GUI"):
         self.step_count = 0
         self.episodes = 0
-        self.times_rewarded = 0
+        self.times_moved_forwards = 0
         self.accumulated_episode_rewards = 0
         p.connect(p.DIRECT if connect_type == "DIRECT" else p.GUI)
         self.reset()
@@ -26,7 +26,7 @@ class RobotEnv(gym.Env):
     def reset(self, seed=None, options=None):
         self.non_moves = 0
         self.prev_pos = []
-        self.times_rewarded = 0
+        self.times_moved_forwards = 0
         self.times_penalized = 0
         self.accumulated_episode_rewards = 0
 
@@ -35,8 +35,8 @@ class RobotEnv(gym.Env):
         p.configureDebugVisualizer(p.COV_ENABLE_MOUSE_PICKING, 0)
         p.resetDebugVisualizerCamera(cameraDistance=20, cameraYaw=0, cameraPitch=-40, cameraTargetPosition=[0, 0, 0])
 
-        self.target_pos = (random.choice([random.uniform(-5, -2), random.uniform(2, 5)]), 
-                           random.choice([random.uniform(-5, -2), random.uniform(2, 5)]))
+        self.target_pos = (random.choice([random.uniform(-5, -3), random.uniform(3, 5)]), 
+                           random.choice([random.uniform(-5, -3), random.uniform(3, 5)]))
         
         p.addUserDebugLine(
             lineFromXYZ=[self.target_pos[0], self.target_pos[1], 0],  # Start at ground level
@@ -47,21 +47,21 @@ class RobotEnv(gym.Env):
         self.step_count = 0
         
         # Loading robot
-        startPos = [0, 0, 3]
+        startPos = [random.randrange(-2, 3), random.randrange(-2, 3), 3] # (x, y, z)
         startOrientation = p.getQuaternionFromEuler([0, 0, 0])
         flags = p.URDF_USE_SELF_COLLISION + p.URDF_USE_INERTIA_FROM_FILE
         self.robot = p.loadURDF(f'{os.getcwd()}/Model/robot.urdf',
                                 startPos, startOrientation,
                                 flags=flags, useFixedBase=False)
         p.changeDynamics(self.robot, -1, restitution=0, linearDamping=0.3, angularDamping=0.3, mass=50,
-                         contactStiffness=1000, contactDamping=50)
+                         contactStiffness=1e5, contactDamping=1000, lateralFriction=5)
         p.setPhysicsEngineParameter(fixedTimeStep=0.002, maxNumCmdPer1ms=0)
         
         # Loading terrain
         self.terrain = self.createRandomHeightfield() # Load floor
         # Set friction, no bounce, no sinking (contactStiffness)
         p.changeDynamics(self.terrain, -1, contactStiffness=1e10, contactDamping=1e10, 
-                         lateralFriction=1.5, spinningFriction=1.2, rollingFriction=0.5 , restitution=0) 
+                         lateralFriction=5, spinningFriction=1.2, rollingFriction=0.5 , restitution=0) 
         
         # Initialize joints
         self.joints = {}
@@ -96,25 +96,25 @@ class RobotEnv(gym.Env):
         if (self.target_pos[0] - 0.25 <= current_x <= self.target_pos[0] + 0.25) and (self.target_pos[1] - 0.25 <= current_y <= self.target_pos[1] + 0.25):
             terminated = True
             self.episodes += 1
-            print("TERMINATED: Target reached  ", "  Times rewarded:", self.times_rewarded, "   Steps ran: ", self.step_count)
+            print("TERMINATED: Target reached  ", "  Times Forward:", self.times_moved_forwards, "   Steps ran: ", self.step_count)
         
         if (self.step_count >= 1000):
             terminated = True
             self.episodes += 1
-            print("TERMINATED: Timeout  ", "  Times rewarded:", self.times_rewarded, "   Steps ran: ", self.step_count)
+            print("TERMINATED: Timeout  ", "  Times Forward:", self.times_moved_forwards, "   Steps ran: ", self.step_count)
             
         if self.isFlipped():
             terminated = True
             self.episodes += 1
-            print("TERMINATED: Flipped  ", "  Times rewarded:", self.times_rewarded, "   Steps ran: ", self.step_count)
+            print("TERMINATED: Flipped  ", "  Times Forward:", self.times_moved_forwards, "   Steps ran: ", self.step_count)
         
         reward = self.evaluateReward()
         self.accumulated_episode_rewards += reward
         
-        if self.non_moves >= 10:
+        if self.non_moves >= 5:
             terminated = True
             self.episodes += 1
-            print("TERMINATED: Stationary  ", "Times rewarded:", self.times_rewarded, "   Steps ran: ", self.step_count)
+            print("TERMINATED: Stationary  ", "Times Forward:", self.times_moved_forwards, "   Steps ran: ", self.step_count)
         
         self.prev_pos = copy.copy(current_pos)
         obs = self.getObservation()
@@ -215,7 +215,7 @@ class RobotEnv(gym.Env):
         com_x, com_y, _ = com_pos
         
         contacts = p.getContactPoints(self.robot, self.terrain)
-        if len(contacts) < 3: # Penalize if not all arms are touching ground
+        if len(contacts) <= 1: # Penalize if not all arms are touching ground
             return -5 
         contact_positions = [contact[5] for contact in contacts]
         contact_x = [pos[0] for pos in contact_positions]
@@ -250,25 +250,26 @@ class RobotEnv(gym.Env):
         # Closing in / moving away
         current_distance = self.distance(self.target_pos, current_pos[:2])
         prev_distance = self.distance(self.target_pos, self.prev_pos)
-   
+
+        # Reward for turning toward the target (smooth scaling up to 90°)
+        direction_reward = max(0, 1 - abs(angle_deviation_degrees) / 90)
+        reward += 5 * direction_reward
+            
         if prev_distance > current_distance + 0.1:
-            self.times_rewarded += 1
-            reward += 100 * (prev_distance - current_distance)
-            
-            # Reward for turning toward the target (smooth scaling up to 90°)
-            direction_reward = max(0, 1 - abs(angle_deviation_degrees) / 90)
-            reward += 15 * direction_reward
-            
-            # Contact points penalty
-            reward -= 5 if len(p.getContactPoints(self.robot, self.terrain)) <= 1 else 0
-            
-        elif round(prev_distance, 3) == round(current_distance, 3):
+            self.times_moved_forwards += 1
+            reward += 150 * (prev_distance - current_distance)
+        
+        if round(prev_distance, 3) != round(current_distance, 3):
+            # Balance rewards, ONLY if the robot is moving forwards
+            reward -= 5 if len(p.getContactPoints(self.robot, self.terrain)) < 1 else 0
+            reward +=  1.25 * self.evaluateBalanceScore() # Balance score out of 10, * 0.5
+        else:
             print('!!!')
             reward -= 10
             self.non_moves += 1
         
         reward -= 0.1
-        reward -= 500 if self.isFlipped() else 0 # Penalty for flipping over
+        reward -= 700 if self.isFlipped() else 0 # Penalty for flipping over
 
         if current_distance < 0.2:
             reward += 1500  # Large final reward
@@ -295,10 +296,10 @@ class RobotEnv(gym.Env):
         sys.exit()
 
 if __name__ == "__main__":
-    env = RobotEnv("DIRECT")
-    """
+    env = RobotEnv("GUI")
+    
     obs, _ = env.reset()
-    model = PPO.load(f'{os.getcwd()}/PPO_SpiderRobot_300000_steps.zip')
+    model = PPO.load(f'{os.getcwd()}/PPOSpiderRobot.zip')
 
     for episode in range(10):
         obs, _ = env.reset() 
@@ -322,9 +323,9 @@ if __name__ == "__main__":
         name_prefix="PPO"
     )
     
-    model = PPO("MlpPolicy", env, verbose=1, gamma=0.99, ent_coef=0.02, tensorboard_log=f'{os.getcwd()}', device='auto', )
+    model = PPO("MlpPolicy", env, verbose=1, gamma=0.99, vf_coef=0.6, ent_coef=0.0015, tensorboard_log=f'{os.getcwd()}', device='auto', )
     model.learn(total_timesteps=1_000_000, progress_bar=True, callback=checkpoint_callback)
     model.save('PPOSpiderRobot')
     evaluate_policy(model, env, n_eval_episodes=10)
-    
+    """
     # tensorboard --logdir=PPO_2
