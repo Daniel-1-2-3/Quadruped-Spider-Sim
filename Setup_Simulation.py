@@ -77,7 +77,7 @@ class Simulation:
         self.robot = p.loadURDF(robotPath,
                                 startPos, startOrientation,
                                 flags=flags, useFixedBase=fixed)
-        p.changeDynamics(self.robot, -1, restitution=0, linearDamping=0.3, angularDamping=0.3)
+        p.changeDynamics(self.robot, -1, restitution=0, linearDamping=0.3, angularDamping=0.3, lateralFriction=5)
 
         # Setting frictions parameters to default ones
         self.setFloorFrictions()
@@ -128,7 +128,7 @@ class Simulation:
 
     def createRandomHeightfield(self):
         """Creates a random heightfield to replace the flat plane."""
-        heightfield_data = np.random.uniform(-0.05, 0.05, 128 * 128).astype(np.float32)  # Small variations
+        heightfield_data = np.zeros(128 * 128, dtype=np.float32)  # Completely flat surface
         terrain_collision = p.createCollisionShape(
             shapeType=p.GEOM_HEIGHTFIELD,
             meshScale=[1.5, 1.5, 5],  # Adjust scale for realistic terrain
@@ -141,10 +141,10 @@ class Simulation:
         p.resetBasePositionAndOrientation(terrain_body, [0, 0, 0], [0, 0, 0, 1])
         p.changeVisualShape(terrain_body, -1, textureUniqueId=-1, rgbaColor=[0.85, 0.85, 0.85, 1])  # Set color
         # Set friction, no bounce, no sinking (contactStiffness)
-        p.changeDynamics(terrain_body, -1, contactStiffness=math.inf, contactDamping=math.inf, lateralFriction=0.8, spinningFriction=0.6, rollingFriction=0.1, restitution=0) 
+        p.changeDynamics(terrain_body, -1, contactStiffness=math.inf, contactDamping=math.inf, lateralFriction=5, spinningFriction=0.6, rollingFriction=0.1, restitution=0) 
         return terrain_body
 
-    def setFloorFrictions(self, lateral=1, spinning=-1, rolling=-1):
+    def setFloorFrictions(self, lateral=5, spinning=-1, rolling=-1):
         """Sets the frictions with the plane object
 
         Keyword Arguments:
@@ -345,13 +345,8 @@ class Simulation:
 
         for name in joints.keys():
             if name in self.joints:
-                if name in self.maxTorques:
-                    maxTorque = self.maxTorques[name]
-                    p.setJointMotorControl2(
-                        self.robot, self.joints[name], p.POSITION_CONTROL, joints[name], force=maxTorque)
-                else:
-                    p.setJointMotorControl2(
-                        self.robot, self.joints[name], p.POSITION_CONTROL, joints[name])
+                p.setJointMotorControl2(
+                    self.robot, self.joints[name], p.POSITION_CONTROL, joints[name])
 
                 applied[name] = p.getJointState(self.robot, self.joints[name])
             else:

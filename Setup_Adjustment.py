@@ -6,7 +6,7 @@ import argparse
 import pybullet as p
 from Setup_Simulation import Simulation
 
-sim = Simulation(f'{os.getcwd()}/Model/robot.urdf', gui=True, panels=True, fixed=False, ignore_self_collisions=False)
+sim = Simulation(f'{os.getcwd()}/V2_Env_Model/Model/robot.urdf', gui=True, panels=True, fixed=False, ignore_self_collisions=False)
 pos, rpy = sim.getRobotPose()
 _, orn = p.getBasePositionAndOrientation(sim.robot)
 sim.setRobotPose([pos[0], pos[1], pos[2]], orn)
