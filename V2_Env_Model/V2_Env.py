@@ -20,8 +20,11 @@ class RobotEnv(gym.Env):
         self.step_count = 0
         self.episodes = 0
         self.times_moved_forwards = 0
+        self.moves = 0
+        
         p.connect(p.DIRECT if connect_type == "DIRECT" else p.GUI)
         self.reset()
+        
         self.action_space = spaces.Box(low=-1, high=1, shape=(8,), dtype=np.float32)
         self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(30,), dtype=np.float32)
         
@@ -29,6 +32,7 @@ class RobotEnv(gym.Env):
         self.non_moves = 0
         self.prev_pos = []
         self.times_moved_forwards = 0
+        self.moves = 0
         self.times_penalized = 0
 
         p.resetSimulation()
@@ -95,7 +99,7 @@ class RobotEnv(gym.Env):
         
         reward, terminated = self.evaluateReward(action)
         if terminated["state"]:
-            print("TERMINATED:", terminated["reason"], "\t\tTimes Forward:", self.times_moved_forwards, "\t\tSteps ran:", self.step_count)
+            print("TERMINATED:", terminated["reason"], "\t\tTimes Forward:", self.moves, "\t\tSteps ran:", self.step_count)
        
         obs = self.getObservation()
         return obs, reward, terminated["state"], False, {}
@@ -156,6 +160,8 @@ class RobotEnv(gym.Env):
         
         # Run simulation steps until all joints reach targets
         for i in range(10):
+            if len(moving_joints.items()) == 0:
+                break
             joints_to_remove = []
             for joint_id, target in moving_joints.items():
                 current_position = p.getJointState(self.robot, joint_id)[0]
@@ -173,13 +179,17 @@ class RobotEnv(gym.Env):
         # Progress reward
         current_pos = p.getBasePositionAndOrientation(self.robot)[0][:2]
         progress = np.dot(np.array(self.target_pos) - np.array(self.prev_pos), np.array(current_pos) - np.array(self.prev_pos))
-        reward += 100 * progress
-        if abs(progress) < 0.01:
-            reward -= 2 # Prevent staying in place or oscillating
+        if progress > 0:
+            reward += 75 * progress * (1 + 0.1 * self.times_moved_forwards)
+            self.times_moved_forwards += 1
+            self.moves += 1
+        else:
+            self.times_moved_forwards *= 0.5
+            reward += 25 * progress * (1 + min(self.episodes / 250, 4))
 
-        self.times_moved_forwards += 1 if progress > 0 else 0
+        reward -= 1.5 if round(progress, 3) < 0.01 else 0 
         self.prev_pos = copy.copy(current_pos)
-        
+
         # Directional reward
         desired_angle = np.arctan2(self.target_pos[1] - current_pos[1], self.target_pos[0] - current_pos[0])
         angle_deviation = desired_angle - p.getEulerFromQuaternion(p.getBasePositionAndOrientation(self.robot)[1])[2] # Subtracting yaw of robot
@@ -190,6 +200,8 @@ class RobotEnv(gym.Env):
         roll, pitch, _ = p.getEulerFromQuaternion(p.getBasePositionAndOrientation(self.robot)[1])
         balance_penalty = abs(np.degrees(roll)) + abs(np.degrees(pitch))
         reward -= 0.1 * balance_penalty  # Small penalty for tilting
+        if len(p.getContactPoints(self.robot, self.terrain)) < 2:
+            reward -= 5
         
         # Electricity cost
         electricity_cost = -0.25 * sum(list(map(abs, action)))
@@ -201,7 +213,7 @@ class RobotEnv(gym.Env):
 
         # Target reached
         if (self.target_pos[0] - 0.25 <= current_pos[0] <= self.target_pos[0] + 0.25) and (self.target_pos[1] - 0.25 <= current_pos[1] <= self.target_pos[1] + 0.25):
-            reward += 500
+            reward += 1500
             terminated = {"state": True, "reason": "Target reached"}
             self.episodes += 1
          
@@ -228,10 +240,6 @@ class RobotEnv(gym.Env):
         # If the roll or pitch is beyond 85 degrees, assume it's flipped
         flipped = abs(roll_deg) > 85 or abs(pitch_deg) > 85
         return flipped
-
-    def distance(self, coord1, coord2):
-        (x1, y1), (x2, y2) = coord1, coord2
-        return math.sqrt((x1 - x2)**2 + (y1 - y2)**2)
     
     def close(self):
         p.disconnect()
@@ -259,8 +267,6 @@ if __name__ == "__main__":
                 break
     env.close()
     """
-    env = DummyVecEnv([lambda: RobotEnv("DIRECT")])
-    env = VecNormalize(env, norm_obs=True, norm_reward=True, clip_obs=10.0)
 
     checkpoint_callback = CheckpointCallback(
         save_freq=100_000, 
@@ -268,8 +274,8 @@ if __name__ == "__main__":
         name_prefix="PPO"
     )
     
-    model = PPO("MlpPolicy", env, verbose=1, gamma=0.99, vf_coef=0.6, ent_coef=0.0015, tensorboard_log=f'{os.getcwd()}', device='auto', )
-    model.learn(total_timesteps=1_000_000, progress_bar=True, callback=checkpoint_callback)
+    model = PPO("MlpPolicy", env, verbose=1, gamma=0.995, vf_coef=0.7, ent_coef=0.001, batch_size=128, tensorboard_log=f'{os.getcwd()}', device='auto', )
+    model.learn(total_timesteps=2_500_000, progress_bar=True, callback=checkpoint_callback)
     model.save('PPOSpiderRobot')
     evaluate_policy(model, env, n_eval_episodes=10)
     
