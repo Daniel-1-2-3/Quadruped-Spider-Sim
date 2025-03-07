@@ -77,7 +77,7 @@
 </collision>
 <inertial>
 <origin xyz="-0.55889969120758586918 -0.16281071528719948116 -0.43853106493353533057" rpy="0 0 0"/>
-<mass value="6000.0" />
+<mass value="1406.2088699182118035" />
 <inertia ixx="228.28431559539393447" ixy="23.919670888678123077"  ixz="0.86795731984523416536" iyy="236.65437763186525899" iyz="-0.758287067241002255" izz="407.15709149261130051" />
 </inertial>
 </link>
@@ -115,7 +115,7 @@
 </collision>
 <inertial>
 <origin xyz="-0.40919518440973640105 -0.029508437651027858567 -0.22545957775453870364" rpy="0 0 0"/>
-<mass value="800.0" />
+<mass value="188.73631876709129074" />
 <inertia ixx="4.6537577933984133338" ixy="-0.25943209440127834586"  ixz="0.036542406653591326393" iyy="5.7446693413348537405" iyz="0.16661863662345752224" izz="4.0892590965830644123" />
 </inertial>
 </link>
@@ -138,7 +138,7 @@
 </collision>
 <inertial>
 <origin xyz="0.061843433631572700127 -0.16731335776010902716 -0.22965309411969184183" rpy="0 0 0"/>
-<mass value="200.0" />
+<mass value="33.700879238921572778" />
 <inertia ixx="1.8183343062068191287" ixy="0.17203321537692853327"  ixz="0.00026994432076561083924" iyy="1.7231385643804477681" iyz="-0.00019728284462283696143" izz="0.83789669946887090912" />
 </inertial>
 </link>
@@ -191,7 +191,7 @@
 </collision>
 <inertial>
 <origin xyz="-0.58225120142243680377 0.029032930571646981682 -0.2417833928966994228" rpy="0 0 0"/>
-<mass value="1600" />
+<mass value="415.11154881410027429" />
 <inertia ixx="7.8602906044066562785" ixy="5.6621374255882983562e-13"  ixz="-2.3258617254384716944e-12" iyy="82.893177179420320044" iyz="0.12274391499317975629" izz="79.382284917831924531" />
 </inertial>
 </link>
@@ -214,7 +214,7 @@
 </collision>
 <inertial>
 <origin xyz="-0.4547065361635874714 -0.0064117836026286040285 -0.22961601618582533346" rpy="0 0 0"/>
-<mass value="1200.0" />
+<mass value="113.67855069945755986" />
 <inertia ixx="2.1103224452338631423" ixy="-0.31372494572636561161"  ixz="-9.9897013468725178957e-07" iyy="8.9091451543029247517" iyz="1.3223695395950474454e-07" izz="7.5543498430532345367" />
 </inertial>
 </link>
@@ -224,7 +224,7 @@
 <parent link="segment3" />
 <child link="legjointconnector4" />
 <axis xyz="0 0 1"/>
-<limit velocity="20" lower="-0.34906585039886589561" upper="1.0471975511965976313"/>
+<limit effort="1" velocity="10" lower="-0.34906585039886589561" upper="1.0471975511965976313"/>
 <joint_properties friction="0.0"/>
 </joint>
 
@@ -233,7 +233,7 @@
 <parent link="legjointconnector2" />
 <child link="segment3" />
 <axis xyz="0 0 1"/>
-<limit velocity="20" lower="-0.34906585039886589561" upper="1.0471975511965976313"/>
+<limit effort="1" velocity="10" lower="-0.34906585039886589561" upper="1.0471975511965976313"/>
 <joint_properties friction="0.0"/>
 </joint>
 
@@ -242,7 +242,7 @@
 <parent link="segment1" />
 <child link="legjointconnector2" />
 <axis xyz="0 0 1"/>
-<limit velocity="20" lower="-0.52359877559829881566" upper="1.3962634015954635824"/>
+<limit effort="1" velocity="10" lower="-0.52359877559829881566" upper="1.3962634015954635824"/>
 <joint_properties friction="0.0"/>
 </joint>
 
@@ -251,7 +251,7 @@
 <parent link="base" />
 <child link="segment1" />
 <axis xyz="0 0 1"/>
-<limit velocity="20" lower="0" upper="0.87266462599716476678"/>
+<limit effort="1" velocity="10" lower="0" upper="0.87266462599716476678"/>
 <joint_properties friction="0.0"/>
 </joint>
 
@@ -288,7 +288,7 @@
 </collision>
 <inertial>
 <origin xyz="-0.40919518440972979523 0.029508437651027435294 -0.22545957775453934202" rpy="0 0 0"/>
-<mass value="800.0" />
+<mass value="188.73631876709129074" />
 <inertia ixx="4.6537577933983200751" ixy="0.25943209440126879795"  ixz="0.036542406653598327737" iyy="5.7446693413346858748" iyz="-0.16661863662345197112" izz="4.089259096582988029" />
 </inertial>
 </link>
@@ -311,7 +311,7 @@
 </collision>
 <inertial>
 <origin xyz="0.061843433631572478082 0.16731335776010916594 -0.22957890588030790968" rpy="0 0 0"/>
-<mass value="200.0" />
+<mass value="33.700879238921572778" />
 <inertia ixx="1.8183343062068195728" ixy="-0.17203321537692883858"  ixz="-0.00026994432076550816529" iyy="1.7231385643804482122" iyz="-0.00019728284462277695084" izz="0.83789669946887090912" />
 </inertial>
 </link>
@@ -364,7 +364,7 @@
 </collision>
 <inertial>
 <origin xyz="-0.58225120142246111765 -0.029032930571645829826 -0.24178339289668335232" rpy="0 0 0"/>
-<mass value="1600" />
+<mass value="415.11154881410027429" />
 <inertia ixx="7.8602906044070959268" ixy="1.0946799022804043489e-13"  ixz="-4.3742787170231167693e-14" iyy="82.893177179428207069" iyz="-0.12274391499226834645" izz="79.382284917839626814" />
 </inertial>
 </link>
@@ -387,7 +387,7 @@
 </collision>
 <inertial>
 <origin xyz="-0.45470653616358835958 0.006411783602628538109 -0.22961598381417483439" rpy="0 0 0"/>
-<mass value="1200.0" />
+<mass value="113.67855069945755986" />
 <inertia ixx="2.1103224452338631423" ixy="0.31372494572636600019"  ixz="9.9897013379428593965e-07" iyy="8.909145154302921199" iyz="1.3223695449668313999e-07" izz="7.5543498430532345367" />
 </inertial>
 </link>
@@ -397,7 +397,7 @@
 <parent link="segment3_2" />
 <child link="legjointconnector4_2" />
 <axis xyz="0 0 1"/>
-<limit velocity="20" lower="-1.0471975511965976313" upper="0.34906585039886589561"/>
+<limit effort="1" velocity="10" lower="-1.0471975511965976313" upper="0.34906585039886589561"/>
 <joint_properties friction="0.0"/>
 </joint>
 
@@ -406,7 +406,7 @@
 <parent link="legjointconnector2_2" />
 <child link="segment3_2" />
 <axis xyz="0 0 1"/>
-<limit velocity="20" lower="-1.0471975511965976313" upper="0.34906585039886589561"/>
+<limit effort="1" velocity="10" lower="-1.0471975511965976313" upper="0.34906585039886589561"/>
 <joint_properties friction="0.0"/>
 </joint>
 
@@ -415,7 +415,7 @@
 <parent link="segment1inverse" />
 <child link="legjointconnector2_2" />
 <axis xyz="0 0 1"/>
-<limit velocity="20" lower="-1.3962634015954635824" upper="0.52359877559829881566"/>
+<limit effort="1" velocity="10" lower="-1.3962634015954635824" upper="0.52359877559829881566"/>
 <joint_properties friction="0.0"/>
 </joint>
 
@@ -424,7 +424,7 @@
 <parent link="base" />
 <child link="segment1inverse" />
 <axis xyz="0 0 1"/>
-<limit velocity="20" lower="-0.87266462599716476678" upper="0"/>
+<limit effort="1" velocity="10" lower="-0.87266462599716476678" upper="0"/>
 <joint_properties friction="0.0"/>
 </joint>
 
@@ -461,7 +461,7 @@
 </collision>
 <inertial>
 <origin xyz="-0.40919518440973640105 -0.029508437651025242604 -0.22545957775453770444" rpy="0 0 0"/>
-<mass value="800.0" />
+<mass value="188.73631876709129074" />
 <inertia ixx="4.6537577933983023115" ixy="-0.25943209440126469012"  ixz="0.036542406653627956814" iyy="5.7446693413348359769" iyz="0.16661863662341369619" izz="4.089259096583027997" />
 </inertial>
 </link>
@@ -484,7 +484,7 @@
 </collision>
 <inertial>
 <origin xyz="0.061843433631572651554 -0.16731335776010922145 -0.22965309411969200837" rpy="0 0 0"/>
-<mass value="200.0" />
+<mass value="33.700879238921572778" />
 <inertia ixx="1.8183343062068191287" ixy="0.17203321537692881082"  ixz="0.00026994432076538738517" iyy="1.7231385643804477681" iyz="-0.00019728284462276421147" izz="0.8378966994688717973" />
 </inertial>
 </link>
@@ -537,7 +537,7 @@
 </collision>
 <inertial>
 <origin xyz="-0.58225120142245145871 0.02903293057164573962 -0.24178339289668415724" rpy="0 0 0"/>
-<mass value="1600" />
+<mass value="415.11154881410027429" />
 <inertia ixx="7.8602906044069262848" ixy="3.1752378504279477056e-14"  ixz="3.2751579226442117942e-14" iyy="82.893177179424384349" iyz="0.12274391499229034275" izz="79.382284917836074101" />
 </inertial>
 </link>
@@ -560,7 +560,7 @@
 </collision>
 <inertial>
 <origin xyz="-0.45470653616358736038 -0.0064117836026284097395 -0.2296160161858250004" rpy="0 0 0"/>
-<mass value="1200.0" />
+<mass value="113.67855069945755986" />
 <inertia ixx="2.1103224452338622541" ixy="-0.3137249457263650565"  ixz="-9.9897013392111472394e-07" iyy="8.909145154302921199" iyz="1.3223695419444169384e-07" izz="7.554349843053236313" />
 </inertial>
 </link>
@@ -570,7 +570,7 @@
 <parent link="segment3_3" />
 <child link="legjointconnector4_3" />
 <axis xyz="0 0 1"/>
-<limit velocity="20" lower="-0.34906585039886589561" upper="1.0471975511965976313"/>
+<limit effort="1" velocity="10" lower="-0.34906585039886589561" upper="1.0471975511965976313"/>
 <joint_properties friction="0.0"/>
 </joint>
 
@@ -579,7 +579,7 @@
 <parent link="legjointconnector2_3" />
 <child link="segment3_3" />
 <axis xyz="0 0 1"/>
-<limit velocity="20" lower="-0.34906585039886589561" upper="1.0471975511965976313"/>
+<limit effort="1" velocity="10" lower="-0.34906585039886589561" upper="1.0471975511965976313"/>
 <joint_properties friction="0.0"/>
 </joint>
 
@@ -588,7 +588,7 @@
 <parent link="segment1_2" />
 <child link="legjointconnector2_3" />
 <axis xyz="0 0 1"/>
-<limit velocity="20" lower="-0.52359877559829881566" upper="1.3962634015954635824"/>
+<limit effort="1" velocity="10" lower="-0.52359877559829881566" upper="1.3962634015954635824"/>
 <joint_properties friction="0.0"/>
 </joint>
 
@@ -597,7 +597,7 @@
 <parent link="base" />
 <child link="segment1_2" />
 <axis xyz="0 0 1"/>
-<limit velocity="20" lower="0" upper="0.87266462599716476678"/>
+<limit effort="1" velocity="10" lower="0" upper="0.87266462599716476678"/>
 <joint_properties friction="0.0"/>
 </joint>
 
@@ -634,7 +634,7 @@
 </collision>
 <inertial>
 <origin xyz="-0.40919518440973573492 0.029508437651028243676 -0.22545957775453881466" rpy="0 0 0"/>
-<mass value="800.0" />
+<mass value="188.73631876709129074" />
 <inertia ixx="4.6537577933983609313" ixy="0.25943209440128567334"  ixz="0.03654240665359743262" iyy="5.7446693413348075552" iyz="-0.16661863662344694736" izz="4.089259096583052866" />
 </inertial>
 </link>
@@ -657,7 +657,7 @@
 </collision>
 <inertial>
 <origin xyz="0.061843433631572665432 0.16731335776010913818 -0.22957890588030807622" rpy="0 0 0"/>
-<mass value="200.0" />
+<mass value="33.700879238921572778" />
 <inertia ixx="1.8183343062068195728" ixy="-0.1720332153769286998"  ixz="-0.00026994432076547168189" iyy="1.7231385643804482122" iyz="-0.000197282844622730032" izz="0.8378966994688717973" />
 </inertial>
 </link>
@@ -710,7 +710,7 @@
 </collision>
 <inertial>
 <origin xyz="-0.58225120142244468635 -0.029032930571646766577 -0.24178339289668263068" rpy="0 0 0"/>
-<mass value="1600" />
+<mass value="415.11154881410027429" />
 <inertia ixx="7.8602906044068259206" ixy="-1.1768364061026659328e-13"  ixz="4.4853010194856324233e-14" iyy="82.893177179421982714" iyz="-0.12274391499229636571" izz="79.382284917833970894" />
 </inertial>
 </link>
@@ -733,7 +733,7 @@
 </collision>
 <inertial>
 <origin xyz="-0.45470653616358702731 0.0064117836026284149437 -0.22961598381417486214" rpy="0 0 0"/>
-<mass value="1200.0" />
+<mass value="113.67855069945755986" />
 <inertia ixx="2.1103224452338613659" ixy="0.31372494572636527854"  ixz="9.9897013350939953685e-07" iyy="8.909145154302921199" iyz="1.3223695442287165664e-07" izz="7.554349843053236313" />
 </inertial>
 </link>
@@ -743,7 +743,7 @@
 <parent link="segment3_4" />
 <child link="legjointconnector4_4" />
 <axis xyz="0 0 1"/>
-<limit velocity="20" lower="-1.0471975511965976313" upper="0.34906585039886589561"/>
+<limit effort="1" velocity="10" lower="-1.0471975511965976313" upper="0.34906585039886589561"/>
 <joint_properties friction="0.0"/>
 </joint>
 
@@ -752,7 +752,7 @@
 <parent link="legjointconnector2_4" />
 <child link="segment3_4" />
 <axis xyz="0 0 1"/>
-<limit velocity="20" lower="-1.0471975511965976313" upper="0.34906585039886589561"/>
+<limit effort="1" velocity="10" lower="-1.0471975511965976313" upper="0.34906585039886589561"/>
 <joint_properties friction="0.0"/>
 </joint>
 
@@ -761,7 +761,7 @@
 <parent link="segment1inverse_2" />
 <child link="legjointconnector2_4" />
 <axis xyz="0 0 1"/>
-<limit velocity="20" lower="-1.3962634015954635824" upper="0.52359877559829881566"/>
+<limit effort="1" velocity="10" lower="-1.3962634015954635824" upper="0.52359877559829881566"/>
 <joint_properties friction="0.0"/>
 </joint>
 
@@ -770,7 +770,7 @@
 <parent link="base" />
 <child link="segment1inverse_2" />
 <axis xyz="0 0 1"/>
-<limit velocity="20" lower="-0.87266462599716476678" upper="0"/>
+<limit effort="1" velocity="10" lower="-0.87266462599716476678" upper="0"/>
 <joint_properties friction="0.0"/>
 </joint>
 

@@ -12,11 +12,10 @@ from gymnasium import register, spaces
 from stable_baselines3 import PPO
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.callbacks import CheckpointCallback
-from stable_baselines3.common.vec_env import DummyVecEnv
-from stable_baselines3.common.vec_env import VecNormalize
-
+from stable_baselines3.common.vec_env import VecMonitor, SubprocVecEnv, VecNormalize
+from stable_baselines3.common.monitor import Monitor
 class RobotEnv(gym.Env):
-    def __init__(self, connect_type="GUI"):
+    def __init__(self, connect_type="DIRECT"):
         self.step_count = 0
         self.total_steps = 0
         self.episodes = 0
@@ -62,14 +61,14 @@ class RobotEnv(gym.Env):
                                 startPos, startOrientation,
                                 flags=flags, useFixedBase=False)
         p.changeDynamics(self.robot, -1, restitution=0, linearDamping=0.3, angularDamping=0.3,
-                         contactStiffness=1e5, contactDamping=3000, lateralFriction=20, rollingFriction=2, spinningFriction=2)
+                         contactStiffness=1e5, contactDamping=3000, lateralFriction=7, rollingFriction=2, spinningFriction=2)
         p.setPhysicsEngineParameter(fixedTimeStep=0.002, maxNumCmdPer1ms=0)
         
         # Loading terrain
         self.terrain = self.createRandomHeightfield() # Load floor
         # Set friction, no bounce, no sinking (contactStiffness)
         p.changeDynamics(self.terrain, -1, contactStiffness=1e10, contactDamping=1e10, 
-                         lateralFriction=20, spinningFriction=2, rollingFriction=2, restitution=0) 
+                         lateralFriction=7, spinningFriction=2, rollingFriction=2, restitution=0) 
         
         # Initialize joints
         self.joint_poses = {}
@@ -81,7 +80,7 @@ class RobotEnv(gym.Env):
             elif name in "BR_J1 FL_J1 BL_J2 FR_J2 BR_J4 FL_J4":
                 current_pos = lower_lim
             self.joint_poses[name] = {"id": joint_id, "pos": current_pos, "lLim": lower_lim, "uLim": upper_lim}
-            p.setJointMotorControl2(self.robot, joint_id, p.POSITION_CONTROL, self.joint_poses[name]["pos"], froce=1e6)
+            p.setJointMotorControl2(self.robot, joint_id, p.POSITION_CONTROL, self.joint_poses[name]["pos"], maxVelocity=10, force=1e6)
 
         for i in range(200): # Wait for robot to touch the ground
             p.stepSimulation()
@@ -101,8 +100,8 @@ class RobotEnv(gym.Env):
         p.stepSimulation()
         
         reward, terminated = self.evaluateReward(action)
-        if terminated["state"]:
-            print("TERMINATED:", terminated["reason"], "\t\tTimes Forward:", self.moves, "\t\tSteps ran:", self.step_count)
+        # if terminated["state"]:
+            # print("TERMINATED:", terminated["reason"], "\t\tTimes Forward:", self.moves, "\t\tSteps ran:", self.step_count)
        
         obs = self.getObservation()
         return obs, reward, terminated["state"], False, {}
@@ -155,20 +154,50 @@ class RobotEnv(gym.Env):
         return terrain_body
 
     def setJoints(self, actions, tolerance=0.05):
+        moving_joints = {}  # Track joints still in motion
+        target_rots = {}
+        
         i = 0
 
         for name, info in self.joint_poses.items():
             if name in {"FL_J1", "FR_J1", "BL_J1", "BR_J1", "FL_J3", "FR_J3", "BL_J3", "BR_J3"}:
-                self.joint_poses[name]["pos"] = ((actions[i] + 1) / 2) * (info["uLim"] - info["lLim"]) + info["lLim"]
+                target_rots[name] = ((actions[i] + 1) / 2) * (info["uLim"] - info["lLim"]) + info["lLim"]
+                moving_joints[self.joint_poses[name]["id"]] = target_rots[name]
                 i += 1
-            p.setJointMotorControl2(self.robot, self.joint_poses[name]["id"], p.POSITION_CONTROL, self.joint_poses[name]["pos"], force=1e6)
+            else:
+                target_rots[name] = self.joint_poses[name]["pos"]
+            p.setJointMotorControl2(self.robot, self.joint_poses[name]["id"], p.POSITION_CONTROL, target_rots[name], maxVelocity=1.5, force=1e6)
+
+        # Run simulation steps until all joints reach targets
+        for j in range(100):
+            joints_to_remove = []
+            for joint_id, target in moving_joints.items():
+                current_position = p.getJointState(self.robot, joint_id)[0]
+                if abs(current_position - target) < tolerance:
+                    joints_to_remove.append(joint_id)  # Mark joint as reached
+
+            # Remove reached joints iteration
+            for joint_id in joints_to_remove:
+                del moving_joints[joint_id]
+                
+            p.stepSimulation()
+            
+            if len(moving_joints.items()) == 0:
+                break
+     
+        for name in target_rots:
+            self.joint_poses[name]["pos"] = target_rots[name]
+        
+        return target_rots
       
     def evaluateReward(self, action):
         reward = 0
         terminated = {"state": False, "reason": ""}
         
         current_pos = p.getBasePositionAndOrientation(self.robot)[0][:2]
-        progress = np.dot(np.array(self.target_pos) - np.array(self.prev_pos), np.array(current_pos) - np.array(self.prev_pos))
+        prev_distance = math.sqrt((self.prev_pos[0] - self.target_pos[0])**2 + (self.prev_pos[1] - self.target_pos[1])**2)
+        current_distance = math.sqrt((current_pos[0] - self.target_pos[0])**2 + (current_pos[1] - self.target[1])**2)
+        progress = prev_distance - current_distance
         
         num_contacts = int(len(p.getContactPoints(self.robot, self.terrain)))
         if num_contacts >= 2:
@@ -179,7 +208,7 @@ class RobotEnv(gym.Env):
                 self.moves += 1
             else:
                 self.times_moved_forwards *= 0.4
-                reward -= 7.5 * abs(progress) * (1 + min((self.total_steps // 2048) / 1000, 1))
+                reward -= 6.5 * abs(progress) * (1 + min((self.total_steps // 2048) / 1000, 1))
 
             reward -= 1.5 if round(progress, 3) < 0.005 else 0 
             self.prev_pos = copy.copy(current_pos)
@@ -195,10 +224,10 @@ class RobotEnv(gym.Env):
         # Balance reward (Penalizes excessive tilting)
         roll, pitch, _ = p.getEulerFromQuaternion(p.getBasePositionAndOrientation(self.robot)[1])
         balance_penalty = abs(np.degrees(roll)) + abs(np.degrees(pitch))
-        reward -= min(5, 0.1 * balance_penalty)
+        reward -= min(5, 0.01 * balance_penalty)
         
         # Electricity cost
-        electricity_cost = -0.1 * sum(list(map(abs, action)))
+        electricity_cost = -0.75 * sum(list(map(abs, action)))
         reward -= electricity_cost
         
         # Joints at limit cost
@@ -208,18 +237,18 @@ class RobotEnv(gym.Env):
 
         # Target reached
         if (self.target_pos[0] - 0.25 <= current_pos[0] <= self.target_pos[0] + 0.25) and (self.target_pos[1] - 0.25 <= current_pos[1] <= self.target_pos[1] + 0.25):
-            reward += 2000
+            reward += 1000
             terminated = {"state": True, "reason": "Target reached"}
             self.episodes += 1
             
         # Flipped check
         if self.isFlipped():
             terminated = {"state": True, "reason": "Flipped"}
-            reward -= 500
+            reward -= 300
             self.episodes += 1
             
         # Timeout
-        if self.step_count > 1500:
+        if self.step_count > 1000:
             terminated = {"state": True, "reason": "Timeout"}
             self.episodes += 1
         
@@ -238,35 +267,20 @@ class RobotEnv(gym.Env):
     
     def close(self):
         p.disconnect()
-        sys.exit()
+        
+env = RobotEnv("DIRECT")
+register(
+    id="PPOSpiderRobot",
+    entry_point="V2_Env:RobotEnv",
+    max_episode_steps=1000,
+)
 
 if __name__ == "__main__":
-    env = RobotEnv("GUI")
-    
-    """
-    obs, _ = env.reset()
-    model = PPO.load(f'{os.getcwd()}/PPOSpiderRobot.zip')
-
-    for episode in range(10):
-        obs, _ = env.reset() 
-        episode_reward = 0
-        
-        while True:
-            action, _ = model.predict(obs, deterministic=False) 
-            obs, reward, terminated, _, _ = env.step(action) 
-            if terminated:
-                print(f"Episode {episode + 1} finished")
-                break
-    env.close()
-    """
-
-    checkpoint_callback = CheckpointCallback(
-        save_freq=100_000, 
-        save_path=os.getcwd(),
-        name_prefix="PPO"
-    )
-    
-    model = PPO("MlpPolicy", env, verbose=1, gamma=0.995, vf_coef=0.6, ent_coef=0.0015, batch_size=128, tensorboard_log=f'{os.getcwd()}', device='auto', )
-    model.learn(total_timesteps=1_500_000, progress_bar=True, callback=checkpoint_callback)
+    num_envs = 8
+    vec_env = SubprocVecEnv([lambda: gym.make("PPOSpiderRobot") for i in range(num_envs)])
+    vec_env = VecMonitor(vec_env, filename="logs/multi_env_log")
+    model = PPO("MlpPolicy", vec_env, verbose=1, gamma=0.995, vf_coef=0.6, ent_coef=0.0015, batch_size=128, tensorboard_log=f'{os.getcwd()}', device='auto', )
+    model.learn(total_timesteps=1_500_000, progress_bar=True)
     model.save('PPOSpiderRobot')
+
     evaluate_policy(model, env, n_eval_episodes=10)
