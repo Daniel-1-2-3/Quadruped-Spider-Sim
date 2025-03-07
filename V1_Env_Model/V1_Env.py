@@ -50,10 +50,10 @@ class RobotEnv(gym.Env):
         startPos = [random.randrange(-2, 3), random.randrange(-2, 3), 3] # (x, y, z)
         startOrientation = p.getQuaternionFromEuler([0, 0, 0])
         flags = p.URDF_USE_SELF_COLLISION + p.URDF_USE_INERTIA_FROM_FILE
-        self.robot = p.loadURDF(f'{os.getcwd()}/Model/robot.urdf',
+        self.robot = p.loadURDF(f'{os.getcwd()}/V1_Env_Model/Model/robot.urdf',
                                 startPos, startOrientation,
                                 flags=flags, useFixedBase=False)
-        p.changeDynamics(self.robot, -1, restitution=0, linearDamping=0.3, angularDamping=0.3, mass=50,
+        p.changeDynamics(self.robot, -1, restitution=0, linearDamping=0.3, angularDamping=0.3,
                          contactStiffness=1e5, contactDamping=1000, lateralFriction=5)
         p.setPhysicsEngineParameter(fixedTimeStep=0.002, maxNumCmdPer1ms=0)
         
@@ -297,7 +297,7 @@ class RobotEnv(gym.Env):
 
 if __name__ == "__main__":
     env = RobotEnv("GUI")
-    
+    """
     obs, _ = env.reset()
     model = PPO.load(f'{os.getcwd()}/PPOSpiderRobot.zip')
 
@@ -327,5 +327,5 @@ if __name__ == "__main__":
     model.learn(total_timesteps=1_000_000, progress_bar=True, callback=checkpoint_callback)
     model.save('PPOSpiderRobot')
     evaluate_policy(model, env, n_eval_episodes=10)
-    """
+    
     # tensorboard --logdir=PPO_2

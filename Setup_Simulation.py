@@ -50,7 +50,7 @@ class Simulation:
                 physicsClient = p.connect(p.GUI)
             else:
                 physicsClient = p.connect(p.DIRECT)
-        p.setGravity(0, 0, -9.81)
+        p.setGravity(0, 0, -20.81)
 
         # Light GUI
         if not panels:
@@ -77,7 +77,8 @@ class Simulation:
         self.robot = p.loadURDF(robotPath,
                                 startPos, startOrientation,
                                 flags=flags, useFixedBase=fixed)
-        p.changeDynamics(self.robot, -1, restitution=0, linearDamping=0.3, angularDamping=0.3, lateralFriction=5)
+        p.changeDynamics(self.robot, -1, restitution=0, linearDamping=0.3, angularDamping=0.3,
+                         contactStiffness=1e5, contactDamping=3000, lateralFriction=5, rollingFriction=1, spinningFriction=1)
 
         # Setting frictions parameters to default ones
         self.setFloorFrictions()
@@ -141,10 +142,10 @@ class Simulation:
         p.resetBasePositionAndOrientation(terrain_body, [0, 0, 0], [0, 0, 0, 1])
         p.changeVisualShape(terrain_body, -1, textureUniqueId=-1, rgbaColor=[0.85, 0.85, 0.85, 1])  # Set color
         # Set friction, no bounce, no sinking (contactStiffness)
-        p.changeDynamics(terrain_body, -1, contactStiffness=math.inf, contactDamping=math.inf, lateralFriction=5, spinningFriction=0.6, rollingFriction=0.1, restitution=0) 
+        p.changeDynamics(terrain_body, -1, contactStiffness=math.inf, contactDamping=math.inf, lateralFriction=5, spinningFriction=0.6, rollingFriction=10, restitution=0) 
         return terrain_body
 
-    def setFloorFrictions(self, lateral=5, spinning=-1, rolling=-1):
+    def setFloorFrictions(self, lateral=5, spinning=-1, rolling=10):
         """Sets the frictions with the plane object
 
         Keyword Arguments:
@@ -153,8 +154,8 @@ class Simulation:
             rolling {float} -- rolling friction (default: {-1.0})
         """
         if self.floor is not None:
-            p.changeDynamics(self.floor, -1, lateralFriction=lateral,
-                             spinningFriction=spinning, rollingFriction=rolling)
+            p.changeDynamics(self.floor, -1, contactStiffness=1e10, contactDamping=1e10, 
+                         lateralFriction=5, spinningFriction=1, rollingFriction=1, restitution=0) 
 
     def lookAt(self, target):
         """Control the look of the visualizer camera
@@ -346,8 +347,12 @@ class Simulation:
         for name in joints.keys():
             if name in self.joints:
                 p.setJointMotorControl2(
-                    self.robot, self.joints[name], p.POSITION_CONTROL, joints[name])
-
+                    bodyUniqueId=self.robot, 
+                    jointIndex=self.joints[name], 
+                    controlMode=p.POSITION_CONTROL, 
+                    targetPosition=joints[name], 
+                    force=1e6,
+                )
                 applied[name] = p.getJointState(self.robot, self.joints[name])
             else:
                 raise Exception("Can't find joint %s" % name)
