@@ -259,10 +259,6 @@ class Simulation:
 
         # Resets the robot position
         orn = [0, 0, 0]
-        if orientation == 'front':
-            orn = [0, math.pi/2, 0]
-        elif orientation == 'back':
-            orn = [0, -math.pi/2, 0]
         self.resetPose([0, 0, height], p.getQuaternionFromEuler(orn))
 
         # Reset the joints to 0

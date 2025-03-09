@@ -9,7 +9,8 @@ from Setup_Simulation import Simulation
 sim = Simulation(f'{os.getcwd()}/V2_Env_Model/Model/robot.urdf', gui=True, panels=True, fixed=False, ignore_self_collisions=False)
 pos, rpy = sim.getRobotPose()
 _, orn = p.getBasePositionAndOrientation(sim.robot)
-sim.setRobotPose([pos[0], pos[1], pos[2]], orn)
+orn = p.getQuaternionFromEuler([0, 0, 0])
+sim.setRobotPose([0, 0, 2], orn)
 
 defined_joints = [
     "FR_J1", "BL_J1", "FL_J1", "BR_J1",
@@ -44,7 +45,6 @@ for name in controls.keys():
         controls[name] = p.addUserDebugParameter(name, low, high, initial_val)
         
 p.configureDebugVisualizer(p.COV_ENABLE_GUI, 1)
-print(targets)
 lastPrint = 0
 sim.setJoints(targets)
 
