@@ -14,6 +14,7 @@ from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.vec_env import VecMonitor, SubprocVecEnv, VecNormalize
 from stable_baselines3.common.monitor import Monitor
+
 class RobotEnv(gym.Env):
     def __init__(self, connect_type="DIRECT"):
         self.step_count = 0
@@ -27,7 +28,7 @@ class RobotEnv(gym.Env):
         self.reset()
         
         self.action_space = spaces.Box(low=-1, high=1, shape=(8,), dtype=np.float32)
-        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(29,), dtype=np.float32)
+        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(24,), dtype=np.float32)
         
     def reset(self, seed=None, options=None):
         self.non_moves = 0
@@ -99,7 +100,6 @@ class RobotEnv(gym.Env):
         terminated = False
         
         self.setJoints(action.tolist())
-        p.stepSimulation()
         
         reward, terminated = self.evaluateReward(action)
         if terminated["state"]:
@@ -118,12 +118,10 @@ class RobotEnv(gym.Env):
                 obs.append(joint_pos)
                 obs.append(joint_vel)
         
-        # Base position and orientation (roll/pitch/yaw)
+        # Base orientation (roll/pitch/yaw)
         base_pos, orn = p.getBasePositionAndOrientation(self.robot)
-        obs.extend(base_pos[:2]) # (x, y)
-        obs.extend(list(p.getEulerFromQuaternion(orn))) # (x, y, z)
-        obs.extend(self.target_pos) # (x, y)
-        
+        obs.extend(list(p.getEulerFromQuaternion(orn))[:2]) # (x, y)
+                
         # Velocity
         lin_vel, ang_vel = p.getBaseVelocity(self.robot)
         obs.extend(lin_vel[:2]) # (x, y)
@@ -146,8 +144,8 @@ class RobotEnv(gym.Env):
         
     def createRandomHeightfield(self):
         """Creates a random heightfield to replace the flat plane."""
-        heightfield_data = np.random.uniform(-0.05, 0.05, 128 * 128).astype(np.float32) 
-        # heightfield_data = np.zeros(128 * 128, dtype=np.float32)  # Completely flat surface
+        # heightfield_data = np.random.uniform(-0.05, 0.05, 128 * 128).astype(np.float32) 
+        heightfield_data = np.zeros(128 * 128, dtype=np.float32)  # Completely flat surface
         terrain_collision = p.createCollisionShape(
             shapeType=p.GEOM_HEIGHTFIELD,
             meshScale=[1.5, 1.5, 5],  # Adjust scale for realistic terrain
@@ -169,8 +167,8 @@ class RobotEnv(gym.Env):
         i = 0
         for name, info in self.joint_poses.items():
             if name in {"FL_J1", "FR_J1", "BL_J1", "BR_J1", "FL_J3", "FR_J3", "BL_J3", "BR_J3"}:
-                increment = math.radians(((actions[i] + 1) / 2) * 10 - 5)
-                target_rots[name] = min(info["uLim"], max(info["lLim"], info["pos"] + increment))
+                # target_rots[name] = info["lLim"] + ((actions[i] + 1) / 2) * (info["uLim"] - info["lLim"])
+                target_rots[name] = min(info["uLim"], max(info["lLim"], 0.2 * actions[i] + info["pos"]))
                 moving_joints[self.joint_poses[name]["id"]] = target_rots[name]
                 i += 1
             else:
@@ -178,7 +176,7 @@ class RobotEnv(gym.Env):
             p.setJointMotorControl2(self.robot, self.joint_poses[name]["id"], p.POSITION_CONTROL, target_rots[name], maxVelocity=1.5, force=1e6)
 
         # Run simulation steps until all joints reach targets
-        for j in range(15):
+        for j in range(100):
             joints_to_remove = []
             for joint_id, target in moving_joints.items():
                 current_position = p.getJointState(self.robot, joint_id)[0]
@@ -203,19 +201,19 @@ class RobotEnv(gym.Env):
         prev_distance = math.sqrt((self.prev_pos[0] - self.target_pos[0])**2 + (self.prev_pos[1] - self.target_pos[1])**2)
         current_distance = math.sqrt((current_pos[0] - self.target_pos[0])**2 + (current_pos[1] - self.target_pos[1])**2)
         progress = prev_distance - current_distance
+        
         num_contacts = int(len(p.getContactPoints(self.robot, self.terrain)))
-        if num_contacts >= 1 and p.getBasePositionAndOrientation(self.robot)[0][2] > 0.1:
-            # Progress reward
-            if progress > 0:
-                reward += 220 * progress * (1 + 0.05 * self.times_moved_forwards)
-                self.times_moved_forwards += 1
-                self.moves += 1
-            else:
-                self.times_moved_forwards *= 0.4
-                reward -= 200 * abs(progress)
+        # Progress reward
+        if progress > 0:
+            reward += 275 * progress * (1 + min(0.05 * self.times_moved_forwards, 1.0))
+            self.times_moved_forwards += 1
+            self.moves += 1
+        else:
+            self.times_moved_forwards *= 0.4
+            reward -= 250 * abs(progress)
 
-            reward -= 1.5 if abs(progress) < 1e-3 else 0
-            self.prev_pos = copy.copy(current_pos)
+        reward -= 2 if abs(progress) < 1e-3 else 0
+        self.prev_pos = copy.copy(current_pos)
         
         if p.getBasePositionAndOrientation(self.robot)[0][2] < 0.01: # Height too low
             reward -= 15
@@ -225,15 +223,15 @@ class RobotEnv(gym.Env):
         robot_yaw = p.getEulerFromQuaternion(p.getBasePositionAndOrientation(self.robot)[1])[2] 
         angle_deviation = (desired_angle - robot_yaw + np.pi) % (2 * np.pi) - np.pi
         angle_deviation = np.degrees(angle_deviation)
-        reward += 10 * np.tanh(1 - abs(angle_deviation) / 25)
+        reward += 3 * np.tanh(1 - abs(angle_deviation) / 25)
             
         # Balance reward (Penalizes excessive tilting)
         roll, pitch, _ = p.getEulerFromQuaternion(p.getBasePositionAndOrientation(self.robot)[1])
         balance_penalty = abs(np.degrees(roll)) + abs(np.degrees(pitch))
-        reward -= min(5, 0.01 * balance_penalty)
+        reward -= min(8, 0.01 * balance_penalty)
         
         # Electricity cost
-        electricity_cost = - sum(list(map(abs, action)))
+        electricity_cost = 0.6 * sum(list(map(abs, action)))
         reward -= electricity_cost
         
         # Joints at limit cost
@@ -252,15 +250,15 @@ class RobotEnv(gym.Env):
         # Flipped check
         if self.isFlipped():
             terminated = {"state": True, "reason": "Flipped"}
-            reward -= 700
+            reward -= 600
             self.episodes += 1
             
         # Timeout
-        if self.step_count > 1000:
-            reward -= 400
+        if self.step_count >= 500:
             terminated = {"state": True, "reason": "Timeout"}
             self.episodes += 1
-        
+            reward -= 450
+            
         reward -= 0.01 * self.step_count
         
         return reward, terminated
@@ -282,17 +280,16 @@ class RobotEnv(gym.Env):
 register(
     id="PPOSpiderRobot",
     entry_point="V2_Env:RobotEnv",
-    max_episode_steps=1000,
+    max_episode_steps=400,
 )
 def make_env():
     def _init():
         return RobotEnv("DIRECT")
     return _init
 
-
 if __name__ == "__main__":
-    
     """
+    env = RobotEnv("GUI")
     obs, _ = env.reset()
     model = PPO.load(f'{os.getcwd()}/PPOSpiderRobot.zip')
 
@@ -302,9 +299,7 @@ if __name__ == "__main__":
         
         while True:
             action, _ = model.predict(obs, deterministic=False) 
-            print(action)
             obs, reward, terminated, _, _ = env.step(action) 
-            print(reward)
             time.sleep(0.01)
 
             if terminated:
@@ -312,20 +307,21 @@ if __name__ == "__main__":
                 break
     env.close()
     """
-    '''
+    
     checkpoint_callback = CheckpointCallback(
-        save_freq=100_000, 
+        save_freq=20_000, 
         save_path=os.getcwd(),
         name_prefix="PPO"
     )
-    '''
-
-    num_envs = 8  # Number of parallel environments
+    policy_kwargs = dict(net_arch=[512, 512, 256, 128])
+    num_envs = 8 # Number of parallel environments
     vec_env = SubprocVecEnv([make_env() for _ in range(num_envs)])
     vec_env = VecMonitor(vec_env, filename="logs/multi_env_log")  # Monitor for logging
-    
-    model = PPO("MlpPolicy", vec_env, verbose=1, gamma=0.95, vf_coef=0.3, tensorboard_log=f'{os.getcwd()}', device='auto', )
-    model.learn(total_timesteps=1_500_000, progress_bar=False)
+
+    model = PPO("MlpPolicy", vec_env, policy_kwargs=policy_kwargs, verbose=1, ent_coef=0.0005, vf_coef=0.4, learning_rate=0.00025, tensorboard_log=f'{os.getcwd()}', device='auto')
+    # model = PPO.load(f'{os.getcwd()}/PPOSpiderRobot.zip', env=vec_env)
+    model.learn(total_timesteps=1_500_000, progress_bar=False, callback=checkpoint_callback)
     model.save('PPOSpiderRobot')
     evaluate_policy(model, vec_env, n_eval_episodes=10)
+    
     
