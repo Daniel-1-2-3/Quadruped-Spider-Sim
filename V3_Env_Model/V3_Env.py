@@ -167,7 +167,7 @@ class RobotEnv(gym.Env):
             return [c, m, m, m, m, m, m, m]  # c, m, m, m, m
 
         def BR_J3_map():
-            d, u, _ = get_joint_info("BR_J3")
+            d, _, u = get_joint_info("BR_J3")
             return [d, u, d, d, d, d, d, d]  # d, u, d, d, d
 
         def FR_J1_map():
@@ -205,9 +205,8 @@ class RobotEnv(gym.Env):
             for key, val in all_actions.items():
                 taking[key] = val[i]
             self.setJoints(taking)
-        time.sleep(2)
     
-    def applyDefinedResetAgain(self):
+    def applyDefinedTurn(self, degree):
         def get_joint_info(name):
             """Returns joint midpoint, lower limit, and upper limit."""
             midpoint = (self.joint_poses[name]["lLim"] + self.joint_poses[name]["uLim"]) / 2
@@ -215,51 +214,63 @@ class RobotEnv(gym.Env):
             upper = self.joint_poses[name]["uLim"]
             return midpoint, lower, upper
 
+        initial_poses = copy.deepcopy({
+            "FL_J1": self.joint_poses["FL_J1"]["pos"],
+            "FR_J1": self.joint_poses["FR_J1"]["pos"],
+            "BR_J1": self.joint_poses["BR_J1"]["pos"],
+            "BL_J1": self.joint_poses["BL_J1"]["pos"]
+        })
+
         def FL_J1_map():
+            c = initial_poses["FL_J1"]
+            t = c - float(np.radians(25 * degree))
             m, f, b = get_joint_info("FL_J1")
-            return [m, m, m, m, m, m, m, m]  # m, m, m, m, m
+            return [m, t, t, t, t, t, m]  # m, m, m, m, m
 
         def FL_J3_map():
             d, _, u = get_joint_info("FL_J3")
-            return [u, d, d, d, d, d, d, d]  # u, d, d, d, d
+            return [u, u, d, d, d, d, d]  # u, d, d, d, d
 
         def BR_J1_map():
-            c = self.joint_poses["BR_J1"]["pos"]
+            c = initial_poses["BR_J1"]
+            t = c - float(np.radians(25 * degree))
             m, _, _ = get_joint_info("BR_J1")
-            return [c, m, m, m, m, m, m, m]  # c, m, m, m, m
+            return [m, t, t, t, t, t, m]  # c, m, m, m, m
 
         def BR_J3_map():
-            d, u, _ = get_joint_info("BR_J3")
-            return [d, u, d, d, d, d, d, d]  # d, u, d, d, d
+            d, _, u = get_joint_info("BR_J3")
+            return [u, u, d, d, d, d, d]  # d, u, d, d, d
 
         def FR_J1_map():
-            c = self.joint_poses["FR_J1"]["pos"]
+            c = initial_poses["FR_J1"]
+            t = c - float(np.radians(25 * degree))
             m, _, _ = get_joint_info("FR_J1")
-            return [c, c, m, m, m, m, m, m]  # c, c, m, m, m
+            return [m, m, m, m, t, t, m]  # c, c, m, m, m
 
         def FR_J3_map():
             d, u, _ = get_joint_info("FR_J3")
-            return [d, d, u, d, d, d, d, d]  # d, d, u, d, d
+            return [d, d, d, u, u, d, d]  # d, d, u, d, d
 
         def BL_J1_map():
-            c = self.joint_poses["BL_J1"]["pos"]
+            c = initial_poses["BL_J1"]
+            t = c - float(np.radians(25 * degree))
             m, _, _ = get_joint_info("BL_J1")
-            return [c, c, c, m, m, m, m, m]  # c, c, c, m, m
+            return [m, m, m, m, t, t, m]  # c, c, c, m, m
 
         def BL_J3_map():
             d, u, _ = get_joint_info("BL_J3")
-            return [d, d, d, u, d, d, d, d]  # d, d, d, u, d
+            return [d, d, d, u, u, d, d]  # d, d, d, u, d
 
         # Dictionary containing all joint movement mappings
         all_actions = {
-            "FL_J1": FL_J1_map(),  # m, m, m, m, m
-            "FL_J3": FL_J3_map(),  # u, d, d, d, d
-            "BR_J1": BR_J1_map(),  # c, m, m, m, m
-            "BR_J3": BR_J3_map(),  # d, u, d, d, d
-            "FR_J1": FR_J1_map(),  # c, c, m, m, m
-            "FR_J3": FR_J3_map(),  # d, d, u, d, d
-            "BL_J1": BL_J1_map(),  # c, c, c, m, m
-            "BL_J3": BL_J3_map(),  # d, d, d, u, d
+            "FL_J1": FL_J1_map(),  # m, t, t, t, t, t, m
+            "FL_J3": FL_J3_map(),  # u, u, d, d, d, d, d
+            "BR_J1": BR_J1_map(),  # m, t, t, t, t, t, m
+            "BR_J3": BR_J3_map(),  # u, u, d, d, d, d, d
+            "FR_J1": FR_J1_map(),  # m, m, m, m, t, t, m
+            "FR_J3": FR_J3_map(),  # d, d, d, u, u, d, d
+            "BL_J1": BL_J1_map(),  # m, m, m, m, t, t, m
+            "BL_J3": BL_J3_map(),  # d, d, d, u, u, d, d
         }
 
         for i in range (len(all_actions["FL_J1"])):
@@ -267,7 +278,6 @@ class RobotEnv(gym.Env):
             for key, val in all_actions.items():
                 taking[key] = val[i]
             self.setJoints(taking)
-        time.sleep(2)
         
     def step(self, action):
         self.total_steps += 1
@@ -278,9 +288,9 @@ class RobotEnv(gym.Env):
         predefined_actions = self.applyDefinedGait()
         self.setJoints(predefined_actions)
         self.applyDefinedReset()
-        self.applyDefinedResetAgain()
-        
-        # self.applyDefinedTurn(10)        
+        for i in range(10):
+            self.applyDefinedTurn(-1)       
+         
         reward, terminated = self.evaluateReward()
         if terminated["state"]:
             print("TERMINATED:", terminated["reason"], "\t\tSteps ran:", self.step_count)
