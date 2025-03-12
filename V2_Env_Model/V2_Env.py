@@ -160,7 +160,7 @@ class RobotEnv(gym.Env):
 
         return terrain_body
 
-    def setJoints(self, actions, tolerance=0.1):
+    def setJoints(self, actions, tolerance=0.017):
         moving_joints = {} # Track joints still in motion
         target_rots = {}
         
@@ -168,7 +168,7 @@ class RobotEnv(gym.Env):
         for name, info in self.joint_poses.items():
             if name in {"FL_J1", "FR_J1", "BL_J1", "BR_J1", "FL_J3", "FR_J3", "BL_J3", "BR_J3"}:
                 # target_rots[name] = info["lLim"] + ((actions[i] + 1) / 2) * (info["uLim"] - info["lLim"])
-                target_rots[name] = min(info["uLim"], max(info["lLim"], 0.2 * actions[i] + info["pos"]))
+                target_rots[name] = min(info["uLim"], max(info["lLim"], 0.15 * actions[i] + info["pos"]))
                 moving_joints[self.joint_poses[name]["id"]] = target_rots[name]
                 i += 1
             else:
@@ -228,11 +228,7 @@ class RobotEnv(gym.Env):
         # Balance reward (Penalizes excessive tilting)
         roll, pitch, _ = p.getEulerFromQuaternion(p.getBasePositionAndOrientation(self.robot)[1])
         balance_penalty = abs(np.degrees(roll)) + abs(np.degrees(pitch))
-        reward -= min(8, 0.01 * balance_penalty)
-        
-        # Electricity cost
-        electricity_cost = 0.6 * sum(list(map(abs, action)))
-        reward -= electricity_cost
+        reward -= min(8, 0.05 * balance_penalty)
         
         # Joints at limit cost
         if self.step_count % 10 == 0:
@@ -243,7 +239,7 @@ class RobotEnv(gym.Env):
 
         # Target reached
         if (self.target_pos[0] - 0.25 <= current_pos[0] <= self.target_pos[0] + 0.25) and (self.target_pos[1] - 0.25 <= current_pos[1] <= self.target_pos[1] + 0.25):
-            reward += 1500
+            reward += 3000
             terminated = {"state": True, "reason": "Target reached"}
             self.episodes += 1
             
@@ -280,7 +276,7 @@ class RobotEnv(gym.Env):
 register(
     id="PPOSpiderRobot",
     entry_point="V2_Env:RobotEnv",
-    max_episode_steps=400,
+    max_episode_steps=500,
 )
 def make_env():
     def _init():
@@ -313,13 +309,15 @@ if __name__ == "__main__":
         save_path=os.getcwd(),
         name_prefix="PPO"
     )
-    policy_kwargs = dict(net_arch=[512, 512, 256, 128])
+    policy_kwargs = dict(net_arch=[256, 256, 128])
     num_envs = 8 # Number of parallel environments
     vec_env = SubprocVecEnv([make_env() for _ in range(num_envs)])
     vec_env = VecMonitor(vec_env, filename="logs/multi_env_log")  # Monitor for logging
 
-    model = PPO("MlpPolicy", vec_env, policy_kwargs=policy_kwargs, verbose=1, ent_coef=0.0005, vf_coef=0.4, learning_rate=0.00025, tensorboard_log=f'{os.getcwd()}', device='auto')
-    # model = PPO.load(f'{os.getcwd()}/PPOSpiderRobot.zip', env=vec_env)
+    old_model = PPO.load(f'{os.getcwd()}/old_PPO_160000_steps.zip', env=vec_env)
+    model = PPO("MlpPolicy", vec_env, policy_kwargs=policy_kwargs, verbose=1, ent_coef=0.0003, vf_coef=0.4, learning_rate=0.00025, tensorboard_log=f'{os.getcwd()}', device='auto')
+    model.set_parameters(old_model.get_parameters())
+    
     model.learn(total_timesteps=1_500_000, progress_bar=False, callback=checkpoint_callback)
     model.save('PPOSpiderRobot')
     evaluate_policy(model, vec_env, n_eval_episodes=10)

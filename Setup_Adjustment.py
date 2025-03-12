@@ -6,7 +6,7 @@ import argparse
 import pybullet as p
 from Setup_Simulation import Simulation
 
-sim = Simulation(f'{os.getcwd()}/V2_Env_Model/Model/robot.urdf', gui=True, panels=True, fixed=False, ignore_self_collisions=False)
+sim = Simulation(f'{os.getcwd()}/V3_Env_Model/Model/robot.urdf', gui=True, panels=True, fixed=False, ignore_self_collisions=False)
 pos, rpy = sim.getRobotPose()
 _, orn = p.getBasePositionAndOrientation(sim.robot)
 orn = p.getQuaternionFromEuler([0, 0, 0])
@@ -36,10 +36,10 @@ for name in controls.keys():
             high = infos['upperLimit']
         initial_val = 0.0
         # Manually set the initial angle
-        if name in "BL_J1 FR_J1 BR_J2 FL_J2 BL_J4 FR_J4":
+        if name in "BL_J1 FR_J1 BL_J4 FR_J4":
             targets[name] = high
             initial_val = high
-        elif name in "BR_J1 FL_J1 BL_J2 FR_J2 BR_J4 FL_J4":
+        elif name in "BR_J1 FL_J1 BR_J4 FL_J4":
             targets[name] = low
             initial_val = low
         controls[name] = p.addUserDebugParameter(name, low, high, initial_val)
