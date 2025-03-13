@@ -1,23 +1,49 @@
 import os, math, random, time, sys, json, copy
 import numpy as np
 import pybullet as p
-
+import threading
+from Navigation import Navigate
 class Movements:
     def __init__(self):
         p.connect(p.GUI)
         self.target_reached = False
+        self.start = None
+        self.goal = None
         self.target_pos = [0, 0]
         self.final_target = [0, 0]
-        self.reset()
-    
+        self.heightfield_data = self.createFieldData()
+
+    def onlyLoadField(self):
+        """Loads the terrain in PyBullet and keeps the simulation running while Pygame selection is active."""
+        p.resetSimulation()
+        p.configureDebugVisualizer(p.COV_ENABLE_MOUSE_PICKING, 0)
+        p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0)
+        p.resetDebugVisualizerCamera(cameraDistance=100, cameraYaw=-90, cameraPitch=0, cameraTargetPosition=[0, 0, 0])
+
+        # Load the heightfield terrain
+        self.terrain = self.createRandomHeightfield()
+
+        def run_simulation():
+            """Runs PyBullet in a separate thread to keep it active."""
+            while self.selection_active:  # Stop when selection is done
+                p.stepSimulation()
+                time.sleep(1 / 240)  # Keep PyBullet running at a stable rate
+
+        # Set selection flag and start simulation thread
+        self.selection_active = True
+        sim_thread = threading.Thread(target=run_simulation, daemon=True)
+        sim_thread.start()
+
+        
     def reset(self):
         p.resetSimulation()
         p.setGravity(0, 0, -10)
         p.configureDebugVisualizer(p.COV_ENABLE_MOUSE_PICKING, 0)
+        p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0)
         p.setPhysicsEngineParameter(enableConeFriction=1)
         
         # Loading robot
-        startPos = [random.randrange(-2, 3), random.randrange(-2, 3), 1.5] # (x, y, z)
+        startPos = [self.start[0], self.start[1], 1.5] # (x, y, z)
         p.resetDebugVisualizerCamera(cameraDistance=20, cameraYaw=0, cameraPitch=-40, cameraTargetPosition=startPos)
         startOrientation = p.getQuaternionFromEuler([0, 0, 0])
         flags = p.URDF_USE_SELF_COLLISION + p.URDF_USE_INERTIA_FROM_FILE
@@ -110,12 +136,9 @@ class Movements:
         
         for i in range(len(all_actions["FL_J1"])):
             taking = {}
-            needGroundedLegs = []
             for key, val in all_actions.items():
                 taking[key] = val[i]
-                if "J3" in key and val[i] == 0 and val[i-1] == 0:
-                    needGroundedLegs.append(key)
-            self.setJoints(taking, needGroundedLegs)
+            self.setJoints(taking)
     
     def applyDefinedTurn(self, degree):
         def get_joint_info(name):
@@ -187,12 +210,9 @@ class Movements:
 
         for i in range (len(all_actions["FL_J1"])):
             taking = {}
-            needGroundedLegs = []
             for key, val in all_actions.items():
                 taking[key] = val[i]
-                if "J3" in key and val[i] == 0 and val[i-1] == 0:
-                    needGroundedLegs.append(key)
-            self.setJoints(taking, needGroundedLegs)
+            self.setJoints(taking)
     
     def applyDefinedReset(self):
         def get_joint_info(name):
@@ -251,54 +271,11 @@ class Movements:
 
         for i in range (len(all_actions["FL_J1"])):
             taking = {}
-            needGroundedLegs = []
             for key, val in all_actions.items():
                 taking[key] = val[i]
-                if "J3" in key and val[i] == 0 and val[i-1] == 0:
-                    needGroundedLegs.append(key)
-            self.setJoints(taking, needGroundedLegs)
-    
-    def groundLegs(self, needGroundedLegs):
-        # Get leg tip ids
-        FL_tip_id = next((i for i in range(p.getNumJoints(self.robot)) if p.getJointInfo(self.robot, i)[12].decode("utf-8") == "legjointconnector4_4"), -1)
-        FR_tip_id = next((i for i in range(p.getNumJoints(self.robot)) if p.getJointInfo(self.robot, i)[12].decode("utf-8") == "legjointconnector4_2"), -1)
-        BL_tip_id = next((i for i in range(p.getNumJoints(self.robot)) if p.getJointInfo(self.robot, i)[12].decode("utf-8") == "legjointconnector4_3"), -1)
-        BR_tip_id = next((i for i in range(p.getNumJoints(self.robot)) if p.getJointInfo(self.robot, i)[12].decode("utf-8") == "legjointconnector4"), -1)
+            self.setJoints(taking)
 
-        for i in range(25):
-            leg_states = [True]  # Assume all legs are grounded until checked
-            updated_joint_values = {}  # Store what the values WOULD be
-
-            if not self.isGrounded(FL_tip_id) and "FL_J3" in needGroundedLegs:
-                new_val = min(self.joint_poses["FL_J2"]["uLim"],
-                            max(self.joint_poses["FL_J2"]["lLim"], self.joint_poses["FL_J2"]["pos"] - 0.01))
-                p.setJointMotorControl2(self.robot, self.joint_poses["FL_J2"]["id"], p.POSITION_CONTROL, new_val, maxVelocity=1.25, force=1e8)
-                leg_states.append(self.isGrounded(FL_tip_id))
-                
-            if not self.isGrounded(FR_tip_id) and "FR_J3" in needGroundedLegs:
-                new_val = min(self.joint_poses["FR_J2"]["uLim"],
-                            max(self.joint_poses["FR_J2"]["lLim"], self.joint_poses["FR_J2"]["pos"] + 0.01))
-                p.setJointMotorControl2(self.robot, self.joint_poses["FR_J2"]["id"], p.POSITION_CONTROL, new_val, maxVelocity=1.25, force=1e8)
-                leg_states.append(self.isGrounded(FR_tip_id))
-
-            if not self.isGrounded(BR_tip_id) and "BR_J3" in needGroundedLegs:
-                new_val = min(self.joint_poses["BR_J2"]["uLim"],
-                            max(self.joint_poses["BR_J2"]["lLim"], self.joint_poses["BR_J2"]["pos"] - 0.01))
-                p.setJointMotorControl2(self.robot, self.joint_poses["BR_J2"]["id"], p.POSITION_CONTROL, new_val, maxVelocity=1.25, force=1e8)
-                leg_states.append(self.isGrounded(BR_tip_id))
-
-            if not self.isGrounded(BL_tip_id) and "BL_J3" in needGroundedLegs:
-                new_val = min(self.joint_poses["BL_J2"]["uLim"],
-                            max(self.joint_poses["BL_J2"]["lLim"], self.joint_poses["BL_J2"]["pos"] + 0.01))
-                p.setJointMotorControl2(self.robot, self.joint_poses["BL_J2"]["id"], p.POSITION_CONTROL, new_val, maxVelocity=1.25, force=1e8)
-                leg_states.append(self.isGrounded(BL_tip_id))
-            
-            p.stepSimulation()
-
-            if all(leg_states):
-                break
-
-    def setJoints(self, predefined_actions, needGroundedLegs, tolerance=0.01):
+    def setJoints(self, predefined_actions, tolerance=0.01):
         moving_joints = {} # Track joints still in motion
         target_rots = {}
         
@@ -313,7 +290,6 @@ class Movements:
 
         # Run simulation steps until all joints reach targets
         for i in range(200):
-            self.groundLegs(needGroundedLegs)
             joints_to_remove = []
             for joint_id, target in moving_joints.items():
                 current_position = p.getJointState(self.robot, joint_id)[0]
@@ -327,33 +303,47 @@ class Movements:
             p.stepSimulation()
             if len(moving_joints.items()) == 0:
                 break
-            if (controller.getDistanceTarget() < 2.5 and self.target_pos != self.final_target) or controller.getDistanceTarget() < 1:
+            if (controller.getDistanceTarget() < 2.5 and self.target_pos != self.final_target) or (controller.getDistanceTarget() < 1):
                 self.target_reached = True
                 break
         for name in target_rots:
             self.joint_poses[name]["pos"] = target_rots[name]
     
+    def createFieldData(self):
+        """Creates a heightfield with randomly spaced boulders."""
+        size = 128
+        stone_min_size = 4  # Min size of a boulder
+        stone_max_size = 7  # Max size of a boulder
+        height_range = 3  # Adjust height variation for boulders
+        num_boulders = 60  # Number of boulders to scatter
+
+        heightfield_data = np.zeros(size * size, dtype=np.float32)
+        
+        # Generate random boulder positions
+        boulder_positions = set()
+        for _ in range(num_boulders):
+            x, y = np.random.randint(0, size), np.random.randint(0, size)
+            boulder_size = np.random.randint(stone_min_size, stone_max_size)
+            boulder_height = np.random.uniform(0, height_range)
+
+            # Ensure boulders do not overlap by spacing them apart
+            if any((bx, by) in boulder_positions for bx in range(x, x + boulder_size) for by in range(y, y + boulder_size)):
+                continue
+
+            for dx in range(boulder_size):
+                for dy in range(boulder_size):
+                    if 0 <= x + dx < size and 0 <= y + dy < size:
+                        heightfield_data[(x + dx) * size + (y + dy)] = boulder_height
+                        boulder_positions.add((x + dx, y + dy))
+        return heightfield_data
+    
     def createRandomHeightfield(self):
-        size = 128  # Grid size
-        spacing = 16  # Spacing between hill centers
-        height_range = 0 # Maximum hill height
-        hill_radius = 2  # Radius of influence for each hill
-
-        x_grid, y_grid = np.meshgrid(np.arange(size), np.arange(size), indexing='ij')
-        heightfield_data = np.zeros((size, size), dtype=np.float32)  # Initialize flat terrain
-
-        for i in range(0, size, spacing):
-            for j in range(0, size, spacing):
-                hill_height = np.random.uniform(0.1, height_range)  # Random hill height
-                distance = np.sqrt((x_grid - i) ** 2 + (y_grid - j) ** 2)
-                heightfield_data += hill_height * np.exp(-0.5 * (distance / hill_radius) ** 2)  # Smooth Gaussian hills
-        heightfield_data = heightfield_data.flatten()
-      
+        # Create terrain in PyBullet
         terrain_collision = p.createCollisionShape(
             shapeType=p.GEOM_HEIGHTFIELD,
-            meshScale=[1.1, 1.1, 5],  # Adjust scale for realistic terrain
+            meshScale=[1.2, 1.2, 2],  # Adjust scale for realistic terrain
             heightfieldTextureScaling=1024,
-            heightfieldData=heightfield_data,
+            heightfieldData=self.heightfield_data,
             numHeightfieldRows=128,
             numHeightfieldColumns=128
         )
@@ -362,10 +352,7 @@ class Movements:
         p.changeVisualShape(terrain_body, -1, textureUniqueId=-1, rgbaColor=[0.85, 0.85, 0.85, 1])  # Set color
 
         return terrain_body
-    
-    def isGrounded(self, link_id):
-        return len(p.getContactPoints(bodyA=self.robot, bodyB=self.terrain, linkIndexA=link_id)) > 0
-    
+
     def getHeadingDeg(self):
         robot_yaw = p.getEulerFromQuaternion(p.getBasePositionAndOrientation(self.robot)[1])[2]
         return np.degrees(robot_yaw) + 180
@@ -382,9 +369,7 @@ class Movements:
         desired_angle = float(np.degrees(np.arctan2(
             self.target_pos[1] - current_pos[1], self.target_pos[0] - current_pos[0])))
         heading_angle = self.getHeadingDeg()
-        a = desired_angle - heading_angle
-        b = 360 - abs(a)
-        angle_deviation = a if abs(a) < abs(b) else b
+        angle_deviation = (desired_angle - heading_angle + 180) % 360 - 180
         return angle_deviation
     
     def autoAlignTarget(self):
@@ -409,6 +394,9 @@ class Movements:
             )
         
     def toTarget(self, targets=[[0, 0], [1, 10], [20, -10]]):
+        for i in range(len(targets)):
+            targets[i] = self.scale(targets[i])
+            
         self.draw_targets(targets)
         self.final_target = targets[-1]
         
@@ -430,8 +418,20 @@ class Movements:
                     break
         print('TARGET REACHED')
         time.sleep(3)
+    
+    def scale(self, pos):
+        x, y = pos[0] - 64, pos[1] - 64
+        return [x, y]
             
 if __name__ == "__main__":
     controller = Movements()
-    controller.toTarget([[-4, 5], [5, 10]])
+    controller.onlyLoadField()
+    nav = Navigate(controller.heightfield_data)
+    nav.selection()
+    
+    controller.start = controller.scale(nav.start)
+    controller.goal = nav.goal
+    
+    controller.reset()
+    controller.toTarget([controller.goal])
         
