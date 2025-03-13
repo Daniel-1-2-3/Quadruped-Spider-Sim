@@ -327,30 +327,31 @@ class Movements:
             p.stepSimulation()
             if len(moving_joints.items()) == 0:
                 break
-            if controller.getDistanceTarget() < 1:
+            if (controller.getDistanceTarget() < 2.5 and self.target_pos != self.final_target) or controller.getDistanceTarget() < 1:
                 self.target_reached = True
                 break
         for name in target_rots:
             self.joint_poses[name]["pos"] = target_rots[name]
     
     def createRandomHeightfield(self):
-        """Creates a random heightfield to replace the flat plane."""
-        size = 128
-        stone_size = 1
-        height_range = 0 # Change value here
+        size = 128  # Grid size
+        spacing = 16  # Spacing between hill centers
+        height_range = 0 # Maximum hill height
+        hill_radius = 2  # Radius of influence for each hill
 
-        heightfield_data = np.zeros(size * size, dtype=np.float32)
-        for i in range(0, size, stone_size):
-            for j in range(0, size, stone_size):
-                height = np.random.uniform(-height_range, height_range)
-                for x in range(stone_size):
-                    for y in range(stone_size):
-                        if (i + x) < size and (j + y) < size:
-                            heightfield_data[(i + x) * size + (j + y)] = height
-        # heightfield_data = np.zeros(128 * 128, dtype=np.float32)  # Completely flat surface
+        x_grid, y_grid = np.meshgrid(np.arange(size), np.arange(size), indexing='ij')
+        heightfield_data = np.zeros((size, size), dtype=np.float32)  # Initialize flat terrain
+
+        for i in range(0, size, spacing):
+            for j in range(0, size, spacing):
+                hill_height = np.random.uniform(0.1, height_range)  # Random hill height
+                distance = np.sqrt((x_grid - i) ** 2 + (y_grid - j) ** 2)
+                heightfield_data += hill_height * np.exp(-0.5 * (distance / hill_radius) ** 2)  # Smooth Gaussian hills
+        heightfield_data = heightfield_data.flatten()
+      
         terrain_collision = p.createCollisionShape(
             shapeType=p.GEOM_HEIGHTFIELD,
-            meshScale=[1.2, 1.2, 2],  # Adjust scale for realistic terrain
+            meshScale=[1.1, 1.1, 5],  # Adjust scale for realistic terrain
             heightfieldTextureScaling=1024,
             heightfieldData=heightfield_data,
             numHeightfieldRows=128,
@@ -361,7 +362,7 @@ class Movements:
         p.changeVisualShape(terrain_body, -1, textureUniqueId=-1, rgbaColor=[0.85, 0.85, 0.85, 1])  # Set color
 
         return terrain_body
-
+    
     def isGrounded(self, link_id):
         return len(p.getContactPoints(bodyA=self.robot, bodyB=self.terrain, linkIndexA=link_id)) > 0
     
