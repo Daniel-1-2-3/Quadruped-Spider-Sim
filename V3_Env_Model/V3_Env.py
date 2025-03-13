@@ -329,8 +329,21 @@ class RobotEnv(gym.Env):
         
     def createRandomHeightfield(self):
         """Creates a random heightfield to replace the flat plane."""
-        # heightfield_data = np.random.uniform(-0.05, 0.05, 128 * 128).astype(np.float32) 
-        heightfield_data = np.zeros(128 * 128, dtype=np.float32)  # Completely flat surface
+         
+        size = 128  # Grid size
+        spacing = 8  # Controls distance between boulders
+        height_range = 0.1  # Adjust boulder height variation
+
+        heightfield_data = np.zeros(size * size, dtype=np.float32)  # Initialize flat terrain
+
+        for i in range(0, size, spacing):  # Place boulders in a grid pattern
+            for j in range(0, size, spacing):
+                height = np.random.uniform(-height_range, height_range)  # Random height for variation
+                for x in range(3):  # Spread the height over a small area for a rounder look
+                    for y in range(3):
+                        if (i + x) < size and (j + y) < size:  # Keep within bounds
+                            heightfield_data[(i + x) * size + (j + y)] = height
+        
         terrain_collision = p.createCollisionShape(
             shapeType=p.GEOM_HEIGHTFIELD,
             meshScale=[1.1, 1.1, 5],  # Adjust scale for realistic terrain
