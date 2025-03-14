@@ -422,7 +422,7 @@ class Movements:
         self.boulder_poses = self.convert_to_pybullet_coords(self.boulder_poses)
 
             
-    def draw_boulders(self, size=64, radius=3.25):
+    def draw_boulders(self, size=64, radius=2.8):
         for boulder in self.boulder_poses:
             x, y = boulder
             heights = [0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5]
@@ -476,7 +476,7 @@ class Movements:
             self.applyDefinedTurn(18 * (deviation / abs(deviation)))
         
         # Fine adjustment 
-        if self.getDistanceTarget() < 2:
+        if self.getDistanceTarget() < 4:
             while abs(self.getDeviationFromTarget()) > 5:
                 self.applyDefinedTurn(3 * (deviation / abs(deviation)))
                 
