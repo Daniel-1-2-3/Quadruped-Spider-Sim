@@ -13,6 +13,7 @@ class Navigate:
         self.path = None
         self.boulders = set()
         self.buffer_positions = set()
+        self.draw_buffer_positions = None
 
     def convert_to_pygame_coords(self, coords):
         return [(32 - y, x + 32) for x, y in coords]
@@ -24,7 +25,7 @@ class Navigate:
         screen = pygame.display.set_mode(screen_size)
         pygame.display.set_caption("Select Start and Goal Points")
 
-        selected_points = set()
+        selected_points = []
         self.boulders = set(self.convert_to_pygame_coords(boulder_coords))
 
         # Store buffer zones as grid squares (but visualize as circles)
@@ -37,12 +38,22 @@ class Navigate:
         self.buffer_positions -= self.boulders  # Ensure buffers don't include boulders
 
         def draw_grid():
+            # Store buffer zones as grid squares (but visualize as circles)
+            if self.draw_buffer_positions is None:
+                self.draw_buffer_positions = set()
+                for bx, by in self.boulders:
+                    for dx in range(-self.buffer_size, self.buffer_size + 1):
+                        for dy in range(-self.buffer_size, self.buffer_size + 1):
+                            if 0 <= bx + dx < self.size and 0 <= by + dy < self.size:
+                                self.buffer_positions.add((bx + dx, by + dy))
+                self.draw_buffer_positions -= self.boulders  # Ensure buffers don't include boulders
+                
             screen.fill((255, 255, 255))
             for x in range(self.size):
                 for y in range(self.size):
                     if (x, y) in self.boulders:
                         color = (163, 59, 36)  # Dark Red (boulders)
-                    elif (x, y) in self.buffer_positions:
+                    elif (x, y) in self.draw_buffer_positions:
                         color = (255, 140, 0)  # Orange (buffer zones)
                     else:
                         color = (19, 156, 94)  # Green (walkable terrain)
@@ -52,7 +63,7 @@ class Navigate:
             for bx, by in self.boulders:
                 pygame.draw.circle(screen, (255, 140, 0), 
                                    (by * self.cell_size + self.cell_size // 2, bx * self.cell_size + self.cell_size // 2), 
-                                   self.buffer_size * self.cell_size, 1)
+                                   self.buffer_size * self.cell_size)
 
             # Draw selected start/goal points
             for idx, (px, py) in enumerate(selected_points):
@@ -69,10 +80,10 @@ class Navigate:
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     mx, my = pygame.mouse.get_pos()
                     grid_x, grid_y = my // self.cell_size, mx // self.cell_size
-                    if (grid_x, grid_y) not in self.boulders and (grid_x, grid_y) not in self.buffer_positions:
-                        selected_points.add((grid_x, grid_y))
+                    if (grid_x, grid_y) not in self.boulders and (grid_x, grid_y) not in self.draw_buffer_positions:
+                        selected_points.append((grid_x, grid_y))
                     if len(selected_points) == 2:
-                        self.start, self.goal = list(selected_points)
+                        self.start, self.goal = selected_points
                         running = False
         pygame.quit()
 
@@ -179,7 +190,7 @@ class Navigate:
                     color = (19, 156, 94)  # Default Green
                     if (x, y) in self.boulders:
                         color = (163, 59, 36)  # Boulders
-                    elif (x, y) in self.buffer_positions:
+                    elif (x, y) in self.draw_buffer_positions:
                         color = (255, 140, 0)  # Buffer
                     pygame.draw.rect(screen, color, (y * self.cell_size, x * self.cell_size, self.cell_size, self.cell_size))
 
@@ -187,7 +198,7 @@ class Navigate:
             for bx, by in self.boulders:
                 pygame.draw.circle(screen, (255, 140, 0), 
                                    (by * self.cell_size + self.cell_size // 2, bx * self.cell_size + self.cell_size // 2), 
-                                   self.buffer_size * self.cell_size, 1)
+                                   self.buffer_size * self.cell_size)
 
             # Draw the path as a line
             if len(self.path) > 1:

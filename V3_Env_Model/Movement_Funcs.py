@@ -422,7 +422,7 @@ class Movements:
         self.boulder_poses = self.convert_to_pybullet_coords(self.boulder_poses)
 
             
-    def draw_boulders(self, size=64, radius=2.75):
+    def draw_boulders(self, size=64, radius=3.25):
         for boulder in self.boulder_poses:
             x, y = boulder
             heights = [0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5]
