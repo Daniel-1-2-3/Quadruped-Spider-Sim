@@ -153,7 +153,7 @@ class Navigate:
             smoothed_path.append((int(round(new_x)), int(round(new_y))))
 
         smoothed_path.append(reduced_path[-1])
-
+        smoothed_path.append(self.goal)
         return smoothed_path
 
     
@@ -201,5 +201,5 @@ class Navigate:
 
         draw_grid()
         pygame.display.flip()
-        pygame.image.save(screen, "AstarPath.png")
+        pygame.image.save(screen, "V3_Env_Model/AstarPath.png")
         pygame.quit()

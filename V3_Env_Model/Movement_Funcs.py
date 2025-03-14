@@ -13,7 +13,7 @@ class Movements:
         self.boulder_poses = []
         self.set_boulders()
     
-    def updateCam(self, distance=20, height=1.5, yaw_offset=0):
+    def updateCam(self, distance=17, height=1.5, yaw_offset=0):
         """ Keeps the camera positioned directly behind the robot, always facing forward. """
         pos, orn = p.getBasePositionAndOrientation(self.robot)
         euler = p.getEulerFromQuaternion(orn)
@@ -44,7 +44,7 @@ class Movements:
         
         # Loading robot
         if self.start != None:
-            p.resetDebugVisualizerCamera(cameraDistance=20, cameraYaw=0, cameraPitch=-40, cameraTargetPosition=self.start)
+            p.resetDebugVisualizerCamera(cameraDistance=17, cameraYaw=0, cameraPitch=-40, cameraTargetPosition=self.start)
             startOrientation = p.getQuaternionFromEuler([0, 0, 0])
             flags = p.URDF_USE_SELF_COLLISION + p.URDF_USE_INERTIA_FROM_FILE
             self.robot = p.loadURDF(f'{os.getcwd()}/V3_Env_Model/Model/robot.urdf',
@@ -71,9 +71,9 @@ class Movements:
             if name in "BL_J4 FR_J4 FL_J1 FR_J1":
                 current_pos = upper_lim
             elif name in "BL_J2 FR_J2":
-                current_pos = np.radians(0)
+                current_pos = np.radians(5)
             elif name in "BR_J2 FL_J2":
-                current_pos = np.radians(0)
+                current_pos = np.radians(-5)
             elif name in "BR_J4 FL_J4 BL_J1 BR_J1":
                 current_pos = lower_lim
           
@@ -84,7 +84,7 @@ class Movements:
             p.stepSimulation()
     
     def applyDefinedGait(self, correction=0):
-        correction *= - 0.55
+        correction *= - 0.75
         def get_joint_info(name):
             midpoint = (self.joint_poses[name]["lLim"] + self.joint_poses[name]["uLim"])/2
             lower = self.joint_poses[name]["lLim"]
@@ -162,7 +162,7 @@ class Movements:
             "BR_J1": self.joint_poses["BR_J1"]["pos"],
             "BL_J1": self.joint_poses["BL_J1"]["pos"]
         })
-        deg = degree * (18 / 14.3597)
+        deg = degree * (1 / 0.73)
 
         def FL_J1_map():
             c = initial_poses["FL_J1"]
@@ -422,7 +422,7 @@ class Movements:
         self.boulder_poses = self.convert_to_pybullet_coords(self.boulder_poses)
 
             
-    def draw_boulders(self, size=64, radius=3):
+    def draw_boulders(self, size=64, radius=2.75):
         for boulder in self.boulder_poses:
             x, y = boulder
             heights = [0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5]
@@ -500,12 +500,11 @@ class Movements:
             self.target_reached = False
             self.target_pos = target
 
-            if self.getDeviationFromTarget() > 40:
-                self.autoAlignTarget()
             while True:
                 deviation = self.getDeviationFromTarget()
-                if abs(deviation) > 30:
+                if abs(deviation) > 45:
                     self.autoAlignTarget()
+                deviation = self.getDeviationFromTarget()
                 self.applyDefinedGait(deviation)
                 if self.target_reached:
                     break
