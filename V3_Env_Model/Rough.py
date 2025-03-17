@@ -51,7 +51,7 @@ class Movements:
                                     self.start, startOrientation,
                                     flags=flags, useFixedBase=False)
             p.changeDynamics(self.robot, -1, restitution=0, linearDamping=0.2, angularDamping=0.3,
-                            contactStiffness=5e10, contactDamping=1e5, lateralFriction=20, 
+                            contactStiffness=5e10, contactDamping=1e5, lateralFriction=100, 
                             rollingFriction=5, spinningFriction=5)
             p.setPhysicsEngineParameter(fixedTimeStep=0.002, maxNumCmdPer1ms=0, contactBreakingThreshold=0.001)
             
@@ -59,7 +59,7 @@ class Movements:
         self.terrain = self.createRandomHeightfield()
         # Set friction, no bounce, no sinking (contactStiffness)
         p.changeDynamics(self.terrain, -1, contactStiffness=5e10, contactDamping=1e5, 
-                         lateralFriction=20, spinningFriction=5, rollingFriction=5, restitution=0.01) 
+                         lateralFriction=100, spinningFriction=5, rollingFriction=5, restitution=0.01) 
         self.draw_boulders()
         
         # Initialize joints
@@ -69,13 +69,13 @@ class Movements:
             joint_id, name, lower_lim, upper_lim, current_pos = joint_info[0], joint_info[1].decode("utf-8"), joint_info[8], joint_info[9], 0
           
             if name in "BL_J4 FR_J4 FL_J1 FR_J1":
-                current_pos = upper_lim
+                current_pos = upper_lim - np.radians(15)
             elif name in "BL_J2 FR_J2":
-                current_pos = np.radians(5)
+                current_pos = np.radians(10)
             elif name in "BR_J2 FL_J2":
-                current_pos = np.radians(-5)
+                current_pos = np.radians(-10)
             elif name in "BR_J4 FL_J4 BL_J1 BR_J1":
-                current_pos = lower_lim
+                current_pos = lower_lim+ np.radians(15)
           
             self.joint_poses[name] = {"id": joint_id, "pos": current_pos, "lLim": lower_lim, "uLim": upper_lim}
             p.setJointMotorControl2(self.robot, joint_id, p.POSITION_CONTROL, self.joint_poses[name]["pos"], maxVelocity=10, force=1e10)
@@ -115,28 +115,28 @@ class Movements:
                 f -= float(np.radians(max(abs(correction), 15)))
                 b += float(np.radians(max(abs(correction), 15)))
             return [f, f, b, b] 
-        def FL_J3_map():
-            d, _, u = get_joint_info("FL_J3")
+        def FL_J2_map():
+            d, _, u = get_joint_info("FL_J2")
             return [u, d, d, d] 
-        def FR_J3_map():
-            d, u, _ = get_joint_info("FR_J3")
+        def FR_J2_map():
+            d, u, _ = get_joint_info("FR_J2")
             return [d, d, u, d] 
-        def BL_J3_map():
-            d, u, _ = get_joint_info("BL_J3")
+        def BL_J2_map():
+            d, u, _ = get_joint_info("BL_J2")
             return [d, d, u, d] 
-        def BR_J3_map():
-            d, _, u = get_joint_info("BR_J3")
+        def BR_J2_map():
+            d, _, u = get_joint_info("BR_J2")
             return [u, d, d, d] 
 
         all_actions = {
             "FL_J1": FL_J1_map(),  # f, f, b, b
-            "FL_J3": FL_J3_map(),  # u, d, d, d
+            "FL_J2": FL_J2_map(),  # u, d, d, d
             "BR_J1": BR_J1_map(),  # f, f, b, b
-            "BR_J3": BR_J3_map(),  # u, d, d, d
+            "BR_J2": BR_J2_map(),  # u, d, d, d
             "FR_J1": FR_J1_map(),  # b, b, f, f
-            "FR_J3": FR_J3_map(),  # d, d, u, d
+            "FR_J2": FR_J2_map(),  # d, d, u, d
             "BL_J1": BL_J1_map(),  # b, b, f, f
-            "BL_J3": BL_J3_map(),  # d, d, u, d
+            "BL_J2": BL_J2_map(),  # d, d, u, d
         }
         
         for i in range(len(all_actions["FL_J1"])):
@@ -144,7 +144,7 @@ class Movements:
             needGroundedLegs = []
             for key, val in all_actions.items():
                 taking[key] = val[i]
-                if "J3" in key and val[i] == 0 and val[i-1] == 0:
+                if "J2" in key and val[i] == 0 and val[i-1] == 0:
                     needGroundedLegs.append(key)
             self.setJoints(taking, needGroundedLegs)
     
@@ -170,8 +170,8 @@ class Movements:
             m, f, b = get_joint_info("FL_J1")
             return [m, t, t, t, t, t, m]  # m, m, m, m, m
 
-        def FL_J3_map():
-            d, _, u = get_joint_info("FL_J3")
+        def FL_J2_map():
+            d, _, u = get_joint_info("FL_J2")
             return [u, u, d, d, d, d, d]  # u, d, d, d, d
 
         def BR_J1_map():
@@ -180,8 +180,8 @@ class Movements:
             m, _, _ = get_joint_info("BR_J1")
             return [m, t, t, t, t, t, m]  # c, m, m, m, m
 
-        def BR_J3_map():
-            d, _, u = get_joint_info("BR_J3")
+        def BR_J2_map():
+            d, _, u = get_joint_info("BR_J2")
             return [u, u, d, d, d, d, d]  # d, u, d, d, d
 
         def FR_J1_map():
@@ -190,8 +190,8 @@ class Movements:
             m, _, _ = get_joint_info("FR_J1")
             return [m, m, m, m, t, t, m]  # c, c, m, m, m
 
-        def FR_J3_map():
-            d, u, _ = get_joint_info("FR_J3")
+        def FR_J2_map():
+            d, u, _ = get_joint_info("FR_J2")
             return [d, d, d, u, u, d, d]  # d, d, u, d, d
 
         def BL_J1_map():
@@ -200,20 +200,20 @@ class Movements:
             m, _, _ = get_joint_info("BL_J1")
             return [m, m, m, m, t, t, m]  # c, c, c, m, m
 
-        def BL_J3_map():
-            d, u, _ = get_joint_info("BL_J3")
+        def BL_J2_map():
+            d, u, _ = get_joint_info("BL_J2")
             return [d, d, d, u, u, d, d]  # d, d, d, u, d
 
         # Dictionary containing all joint movement mappings
         all_actions = {
             "FL_J1": FL_J1_map(),  # m, t, t, t, t, t, m
-            "FL_J3": FL_J3_map(),  # u, u, d, d, d, d, d
+            "FL_J2": FL_J2_map(),  # u, u, d, d, d, d, d
             "BR_J1": BR_J1_map(),  # m, t, t, t, t, t, m
-            "BR_J3": BR_J3_map(),  # u, u, d, d, d, d, d
+            "BR_J2": BR_J2_map(),  # u, u, d, d, d, d, d
             "FR_J1": FR_J1_map(),  # m, m, m, m, t, t, m
-            "FR_J3": FR_J3_map(),  # d, d, d, u, u, d, d
+            "FR_J2": FR_J2_map(),  # d, d, d, u, u, d, d
             "BL_J1": BL_J1_map(),  # m, m, m, m, t, t, m
-            "BL_J3": BL_J3_map(),  # d, d, d, u, u, d, d
+            "BL_J2": BL_J2_map(),  # d, d, d, u, u, d, d
         }
 
         for i in range (len(all_actions["FL_J1"])):
@@ -221,7 +221,7 @@ class Movements:
             needGroundedLegs = []
             for key, val in all_actions.items():
                 taking[key] = val[i]
-                if "J3" in key and val[i] == 0 and val[i-1] == 0:
+                if "J2" in key and val[i] == 0 and val[i-1] == 0:
                     needGroundedLegs.append(key)
             self.setJoints(taking, needGroundedLegs)
     
@@ -237,8 +237,8 @@ class Movements:
             m, f, b = get_joint_info("FL_J1")
             return [m, m, m, m, m, m, m, m]  # m, m, m, m, m
 
-        def FL_J3_map():
-            d, _, u = get_joint_info("FL_J3")
+        def FL_J2_map():
+            d, _, u = get_joint_info("FL_J2")
             return [u, d, d, d, d, d, d, d]  # u, d, d, d, d
 
         def BR_J1_map():
@@ -246,8 +246,8 @@ class Movements:
             m, _, _ = get_joint_info("BR_J1")
             return [c, m, m, m, m, m, m, m]  # c, m, m, m, m
 
-        def BR_J3_map():
-            d, _, u = get_joint_info("BR_J3")
+        def BR_J2_map():
+            d, _, u = get_joint_info("BR_J2")
             return [d, u, d, d, d, d, d, d]  # d, u, d, d, d
 
         def FR_J1_map():
@@ -255,8 +255,8 @@ class Movements:
             m, _, _ = get_joint_info("FR_J1")
             return [c, c, m, m, m, m, m, m]  # c, c, m, m, m
 
-        def FR_J3_map():
-            d, u, _ = get_joint_info("FR_J3")
+        def FR_J2_map():
+            d, u, _ = get_joint_info("FR_J2")
             return [d, d, u, d, d, d, d, d]  # d, d, u, d, d
 
         def BL_J1_map():
@@ -264,20 +264,20 @@ class Movements:
             m, _, _ = get_joint_info("BL_J1")
             return [c, c, c, m, m, m, m, m]  # c, c, c, m, m
 
-        def BL_J3_map():
-            d, u, _ = get_joint_info("BL_J3")
+        def BL_J2_map():
+            d, u, _ = get_joint_info("BL_J2")
             return [d, d, d, u, d, d, d, d]  # d, d, d, u, d
 
         # Dictionary containing all joint movement mappings
         all_actions = {
             "FL_J1": FL_J1_map(),  # m, m, m, m, m
-            "FL_J3": FL_J3_map(),  # u, d, d, d, d
+            "FL_J2": FL_J2_map(),  # u, d, d, d, d
             "BR_J1": BR_J1_map(),  # c, m, m, m, m
-            "BR_J3": BR_J3_map(),  # d, u, d, d, d
+            "BR_J2": BR_J2_map(),  # d, u, d, d, d
             "FR_J1": FR_J1_map(),  # c, c, m, m, m
-            "FR_J3": FR_J3_map(),  # d, d, u, d, d
+            "FR_J2": FR_J2_map(),  # d, d, u, d, d
             "BL_J1": BL_J1_map(),  # c, c, c, m, m
-            "BL_J3": BL_J3_map(),  # d, d, d, u, d
+            "BL_J2": BL_J2_map(),  # d, d, d, u, d
         }
 
         for i in range (len(all_actions["FL_J1"])):
@@ -285,7 +285,7 @@ class Movements:
             needGroundedLegs = []
             for key, val in all_actions.items():
                 taking[key] = val[i]
-                if "J3" in key and val[i] == 0 and val[i-1] == 0:
+                if "J2" in key and val[i] == 0 and val[i-1] == 0:
                     needGroundedLegs.append(key)
             self.setJoints(taking, needGroundedLegs)
     
@@ -299,32 +299,32 @@ class Movements:
         for i in range(10):
             leg_states = [True]  # Assume all legs are grounded until checked
 
-            if not self.isGrounded(FL_tip_id) and "FL_J3" in needGroundedLegs:
-                new_val = min(self.joint_poses["FL_J3"]["uLim"],
-                            max(self.joint_poses["FL_J3"]["lLim"], self.joint_poses["FL_J3"]["pos"] - 0.05))
-                p.setJointMotorControl2(self.robot, self.joint_poses["FL_J3"]["id"], p.POSITION_CONTROL, new_val, maxVelocity=1, force=1e6)
-                self.joint_poses["FL_J3"]["pos"] = new_val
+            if not self.isGrounded(FL_tip_id) and "FL_J2" in needGroundedLegs:
+                new_val = min(self.joint_poses["FL_J2"]["uLim"],
+                            max(self.joint_poses["FL_J2"]["lLim"], self.joint_poses["FL_J2"]["pos"] - 0.05))
+                p.setJointMotorControl2(self.robot, self.joint_poses["FL_J2"]["id"], p.POSITION_CONTROL, new_val, maxVelocity=1.25, force=1e6)
+                self.joint_poses["FL_J2"]["pos"] = new_val
                 leg_states.append(self.isGrounded(FL_tip_id))
                 
-            if not self.isGrounded(FR_tip_id) and "FR_J3" in needGroundedLegs:
-                new_val = min(self.joint_poses["FR_J3"]["uLim"],
-                            max(self.joint_poses["FR_J3"]["lLim"], self.joint_poses["FR_J3"]["pos"] + 0.05))
-                p.setJointMotorControl2(self.robot, self.joint_poses["FR_J3"]["id"], p.POSITION_CONTROL, new_val, maxVelocity=1, force=1e6)
-                self.joint_poses["FR_J3"]["pos"] = new_val
+            if not self.isGrounded(FR_tip_id) and "FR_J2" in needGroundedLegs:
+                new_val = min(self.joint_poses["FR_J2"]["uLim"],
+                            max(self.joint_poses["FR_J2"]["lLim"], self.joint_poses["FR_J2"]["pos"] + 0.05))
+                p.setJointMotorControl2(self.robot, self.joint_poses["FR_J2"]["id"], p.POSITION_CONTROL, new_val, maxVelocity=1.25, force=1e6)
+                self.joint_poses["FR_J2"]["pos"] = new_val
                 leg_states.append(self.isGrounded(FR_tip_id))
 
-            if not self.isGrounded(BR_tip_id) and "BR_J3" in needGroundedLegs:
-                new_val = min(self.joint_poses["BR_J3"]["uLim"],
-                            max(self.joint_poses["BR_J3"]["lLim"], self.joint_poses["BR_J3"]["pos"] - 0.05))
-                p.setJointMotorControl2(self.robot, self.joint_poses["BR_J3"]["id"], p.POSITION_CONTROL, new_val, maxVelocity=1, force=1e6)
-                self.joint_poses["BR_J3"]["pos"] = new_val
+            if not self.isGrounded(BR_tip_id) and "BR_J2" in needGroundedLegs:
+                new_val = min(self.joint_poses["BR_J2"]["uLim"],
+                            max(self.joint_poses["BR_J2"]["lLim"], self.joint_poses["BR_J2"]["pos"] - 0.05))
+                p.setJointMotorControl2(self.robot, self.joint_poses["BR_J2"]["id"], p.POSITION_CONTROL, new_val, maxVelocity=1.25, force=1e6)
+                self.joint_poses["BR_J2"]["pos"] = new_val
                 leg_states.append(self.isGrounded(BR_tip_id))
 
-            if not self.isGrounded(BL_tip_id) and "BL_J3" in needGroundedLegs:
-                new_val = min(self.joint_poses["BL_J3"]["uLim"],
-                            max(self.joint_poses["BL_J3"]["lLim"], self.joint_poses["BL_J3"]["pos"] + 0.05))
-                p.setJointMotorControl2(self.robot, self.joint_poses["BL_J3"]["id"], p.POSITION_CONTROL, new_val, maxVelocity=1, force=1e6)
-                self.joint_poses["BL_J3"]["pos"] = new_val
+            if not self.isGrounded(BL_tip_id) and "BL_J2" in needGroundedLegs:
+                new_val = min(self.joint_poses["BL_J2"]["uLim"],
+                            max(self.joint_poses["BL_J2"]["lLim"], self.joint_poses["BL_J2"]["pos"] + 0.05))
+                p.setJointMotorControl2(self.robot, self.joint_poses["BL_J2"]["id"], p.POSITION_CONTROL, new_val, maxVelocity=1.25, force=1e6)
+                self.joint_poses["BL_J2"]["pos"] = new_val
                 leg_states.append(self.isGrounded(BL_tip_id))
             
             p.stepSimulation()
@@ -332,7 +332,7 @@ class Movements:
             if all(leg_states):
                 break
 
-    def setJoints(self, predefined_actions, needGroundedLegs, tolerance=0.01):
+    def setJoints(self, predefined_actions, needGroundedLegs, tolerance=0.05):
         moving_joints = {} # Track joints still in motion
         target_rots = {}
         
@@ -343,12 +343,12 @@ class Movements:
                 target_rots[name] = info[name]["pos"]
            
             moving_joints[self.joint_poses[name]["id"]] = target_rots[name]
-            p.setJointMotorControl2(self.robot, self.joint_poses[name]["id"], p.POSITION_CONTROL, target_rots[name], maxVelocity=1, force=1e8)
+            p.setJointMotorControl2(self.robot, self.joint_poses[name]["id"], p.POSITION_CONTROL, target_rots[name], maxVelocity=1.25, force=1e8)
 
         # Run simulation steps until all joints reach targets
-        for i in range(150):
+        for i in range(100):
             self.updateCam()
-            # self.groundLegs(needGroundedLegs)
+            self.groundLegs(needGroundedLegs)
             joints_to_remove = []
             for joint_id, target in moving_joints.items():
                 current_position = p.getJointState(self.robot, joint_id)[0]
@@ -372,7 +372,7 @@ class Movements:
         """Creates a random heightfield to replace the flat plane."""
         size = 64
         stone_size = 2
-        height_range = 0
+        height_range = 0.17
 
         heightfield_data = np.zeros(size * size, dtype=np.float32)
         for i in range(0, size, stone_size):
@@ -400,7 +400,7 @@ class Movements:
     def set_boulders(self):
         self.boulder_poses = [
             # Cluster 1 (Bottom Left)
-            (5, 5), (8, 6), (6, 8), (9, 9), (7, 10), 
+            (5, 5), (8, 6), (6, 8), (9, 9), (7, 10),
             
             # Cluster 2 (Top Left)
             (12, 45), (15, 46), (14, 48), (17, 50), (19, 47), (16, 43),
@@ -409,7 +409,7 @@ class Movements:
             (30, 30), (32, 32), (33, 29), (34, 31), (31, 34), (29, 28), (35, 35),
             
             # Cluster 4 (Top Right)
-            (51, 55), (50, 50),
+            (50, 50), (52, 53), (54, 51), (51, 55), (55, 52),
             
             # Cluster 5 (Bottom Right)
             (58, 10), (60, 11), (57, 12), (61, 13), (59, 9),
