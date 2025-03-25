@@ -297,9 +297,9 @@ class RobotEnv(gym.Env):
 
 if __name__ == "__main__":
     env = RobotEnv("GUI")
-    """
+    
     obs, _ = env.reset()
-    model = PPO.load(f'{os.getcwd()}/PPOSpiderRobot.zip')
+    model = PPO.load(f'{os.getcwd()}/V1_Env_Model/V1B_PPOSpiderRobot.zip')
 
     for episode in range(10):
         obs, _ = env.reset() 
@@ -327,5 +327,5 @@ if __name__ == "__main__":
     model.learn(total_timesteps=1_000_000, progress_bar=True, callback=checkpoint_callback)
     model.save('PPOSpiderRobot')
     evaluate_policy(model, env, n_eval_episodes=10)
-    
+    """
     # tensorboard --logdir=PPO_2

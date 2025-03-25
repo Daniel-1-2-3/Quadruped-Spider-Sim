@@ -1,7 +1,7 @@
 import pygame
 import numpy as np
 import heapq
-import copy
+import copy, time
 
 class Navigate:
     def __init__(self, size=64, buffer_size=5, cell_size=5):
@@ -213,4 +213,5 @@ class Navigate:
         draw_grid()
         pygame.display.flip()
         pygame.image.save(screen, "V3_Env_Model/AstarPath.png")
+        time.sleep(2)
         pygame.quit()
